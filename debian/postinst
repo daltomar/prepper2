@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+echo ""
+echo "Ablaufdatum-Checker wurde installiert, aber noch nicht aktiviert."
+echo "Um wöchentliche Benachrichtigungen zu aktivieren, führe aus:"
+echo ""
+echo "    systemctl --user enable --now ablaufdatum-checker.timer"
+echo ""
+echo "Für optionalen E-Mail-Versand, erstelle:"
+echo "    ~/.config/ablaufdatum-tracker/config.toml"
+echo "Beispielkonfiguration wird beim ersten Start des Checkers erstellt."
+echo ""
+echo "Status prüfen:"
+echo "    systemctl --user status ablaufdatum-checker.timer"
+echo "    journalctl --user -u ablaufdatum-checker.service"
+echo ""

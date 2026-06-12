@@ -1,0 +1,9 @@
+[Unit]
+Description=Ablaufdatum-Tracker Benachrichtigungsdienst
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/ablaufdatum-checker
+Environment=DISPLAY=:0
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
