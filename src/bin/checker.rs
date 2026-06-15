@@ -212,7 +212,7 @@ fn email_senden(cfg: &EmailConfig, anzahl: usize, body: &str) -> Result<(), Stri
     let email = Message::builder()
         .from(from)
         .to(to)
-        .subject(format!("Ablaufdatum-Tracker: {} Artikel prüfen", anzahl))
+        .subject(format!("[Rat-Apps] Prepper: {} Artikel prüfen", anzahl))
         .header(ContentType::TEXT_PLAIN)
         .body(body.to_string())
         .map_err(|e| e.to_string())?;
