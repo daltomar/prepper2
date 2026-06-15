@@ -2,8 +2,9 @@ use ablaufdatum_tracker::artikel::{AblaufStatus, Artikel};
 use ablaufdatum_tracker::csv_io::laden;
 use chrono::{Local, NaiveDate};
 use lettre::{
-    message::header::ContentType, transport::smtp::authentication::Credentials, Message,
-    SmtpTransport, Transport,
+    message::{header::ContentType, Mailboxes},
+    transport::smtp::authentication::Credentials,
+    Message, SmtpTransport, Transport,
 };
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -132,7 +133,7 @@ smtp_port = 587
 username = "dein@email.de"
 password = "app-passwort"
 from = "dein@email.de"
-to = "empfaenger@email.de"
+to = "empfaenger@email.de, zweiter@email.de"
 "#;
 
     if std::fs::write(&example_pfad, example).is_ok() {
@@ -204,14 +205,16 @@ fn email_senden(cfg: &EmailConfig, anzahl: usize, body: &str) -> Result<(), Stri
         .from
         .parse()
         .map_err(|e| format!("Ungültige Absenderadresse: {}", e))?;
-    let to = cfg
+    let to: Mailboxes = cfg
         .to
         .parse()
         .map_err(|e| format!("Ungültige Empfängeradresse: {}", e))?;
 
-    let email = Message::builder()
-        .from(from)
-        .to(to)
+    let mut builder = Message::builder().from(from);
+    for mailbox in to {
+        builder = builder.to(mailbox);
+    }
+    let email = builder
         .subject(format!("[Rat-Apps] Prepper: {} Artikel prüfen", anzahl))
         .header(ContentType::TEXT_PLAIN)
         .body(body.to_string())
@@ -258,4 +261,34 @@ fn log_schreiben(nachricht: &str) {
 
     let start = zeilen.len().saturating_sub(50);
     let _ = std::fs::write(&pfad, zeilen[start..].join("\n") + "\n");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_feld_akzeptiert_mehrere_adressen() {
+        let mehrere = "eins@example.com, zwei@example.com, drei@example.com";
+        let mailboxes: Result<Mailboxes, _> = mehrere.parse();
+        assert!(mailboxes.is_ok(), "Komma-getrennte Adressen müssen parsebar sein");
+        let liste: Vec<_> = mailboxes.unwrap().into_iter().collect();
+        assert_eq!(liste.len(), 3);
+    }
+
+    #[test]
+    fn to_feld_akzeptiert_einzelne_adresse() {
+        let einzeln = "empfaenger@example.com";
+        let mailboxes: Result<Mailboxes, _> = einzeln.parse();
+        assert!(mailboxes.is_ok());
+        let liste: Vec<_> = mailboxes.unwrap().into_iter().collect();
+        assert_eq!(liste.len(), 1);
+    }
+
+    #[test]
+    fn to_feld_lehnt_ungueltige_adresse_ab() {
+        let ungueltig = "keine-email";
+        let mailboxes: Result<Mailboxes, _> = ungueltig.parse();
+        assert!(mailboxes.is_err());
+    }
 }
