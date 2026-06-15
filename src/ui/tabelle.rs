@@ -85,39 +85,57 @@ pub fn zeige_tabelle(ui: &mut egui::Ui, state: &mut AppState) {
             for zeile in &zeilen {
                 let bg = zeile.bg;
                 let fg = zeile.fg;
+                let artikel_id = zeile.artikel.id;
 
                 body.row(22.0, |mut row| {
-                    let row_resp = row.col(|ui| {
+                    let mut zeile_doppelklick = false;
+
+                    row.col(|ui| {
                         let rect = ui.available_rect_before_wrap();
                         ui.painter().rect_filled(rect, 0.0, bg);
                         ui.label(RichText::new(&zeile.name).color(fg));
+                        if ui.interact(rect, egui::Id::new(("c0", artikel_id)), egui::Sense::click()).double_clicked() {
+                            zeile_doppelklick = true;
+                        }
                     });
 
                     row.col(|ui| {
                         let rect = ui.available_rect_before_wrap();
                         ui.painter().rect_filled(rect, 0.0, bg);
                         ui.label(RichText::new(&zeile.kaufdatum).color(fg));
+                        if ui.interact(rect, egui::Id::new(("c1", artikel_id)), egui::Sense::click()).double_clicked() {
+                            zeile_doppelklick = true;
+                        }
                     });
 
                     row.col(|ui| {
                         let rect = ui.available_rect_before_wrap();
                         ui.painter().rect_filled(rect, 0.0, bg);
                         ui.label(RichText::new(&zeile.menge).color(fg));
+                        if ui.interact(rect, egui::Id::new(("c2", artikel_id)), egui::Sense::click()).double_clicked() {
+                            zeile_doppelklick = true;
+                        }
                     });
 
                     row.col(|ui| {
                         let rect = ui.available_rect_before_wrap();
                         ui.painter().rect_filled(rect, 0.0, bg);
                         ui.label(RichText::new(&zeile.ablaufdatum).color(fg));
+                        if ui.interact(rect, egui::Id::new(("c3", artikel_id)), egui::Sense::click()).double_clicked() {
+                            zeile_doppelklick = true;
+                        }
                     });
 
                     row.col(|ui| {
                         let rect = ui.available_rect_before_wrap();
                         ui.painter().rect_filled(rect, 0.0, bg);
                         ui.label(RichText::new(&zeile.bemerkung).color(fg));
+                        if ui.interact(rect, egui::Id::new(("c4", artikel_id)), egui::Sense::click()).double_clicked() {
+                            zeile_doppelklick = true;
+                        }
                     });
 
-                    if row_resp.1.double_clicked() {
+                    if zeile_doppelklick {
                         doppelklick = Some(zeile.artikel.clone());
                     }
                 });
