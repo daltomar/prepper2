@@ -104,7 +104,7 @@ fn build_zeilen(artikel: &[Artikel], heute: chrono::NaiveDate, filter: &str) -> 
     };
     artikel
         .iter()
-        .filter(|a| filter_status.as_ref().map_or(true, |fs| &a.status(heute) == fs))
+        .filter(|a| filter_status.as_ref().is_none_or(|fs| &a.status(heute) == fs))
         .map(|a| {
             let status = a.status(heute);
             ArtikelZeile {

@@ -38,9 +38,13 @@ async fn main() {
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         .with_state(state);
 
-    let addr = "0.0.0.0:8080";
+    let addr = std::env::var("ABLAUFDATUM_ADDR")
+        .unwrap_or_else(|_| "127.0.0.1:8085".to_string());
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap_or_else(|e| {
+        eprintln!("Fehler: Konnte nicht an {addr} binden: {e}");
+        std::process::exit(1);
+    });
     println!("Ablaufdatum-Tracker läuft auf http://{addr}");
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -82,6 +86,6 @@ fn check_basic_auth(headers: &HeaderMap, expected_password: &str) -> bool {
         return false;
     };
     // Accept "anyuser:password" — the username is ignored
-    let pw = creds.splitn(2, ':').nth(1).unwrap_or(creds);
+    let pw = creds.split_once(':').map_or(creds, |x| x.1);
     pw == expected_password
 }
