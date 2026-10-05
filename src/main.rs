@@ -38,7 +38,7 @@ async fn main() {
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         .with_state(state);
 
-    let addr = "0.0.0.0:8080";
+    let addr = "0.0.0.0:8085";
     println!("Ablaufdatum-Tracker läuft auf http://{addr}");
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
