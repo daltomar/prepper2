@@ -6,6 +6,7 @@ After=network.target
 Type=simple
 ExecStart=%h/.local/bin/ablaufdatum-tracker
 Environment=ABLAUFDATUM_PASSWORD=changeme
+Environment=ABLAUFDATUM_ADDR=0.0.0.0:8085
 Restart=on-failure
 RestartSec=5
 

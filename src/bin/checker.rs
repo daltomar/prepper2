@@ -56,24 +56,27 @@ fn run() -> Result<(), String> {
     kritisch.sort_by_key(|a| a.ablaufdatum);
     let anzahl = kritisch.len();
 
-    let notify_result = std::process::Command::new("notify-send")
-        .arg("--urgency=normal")
-        .arg("--icon=dialog-warning")
-        .arg("Ablaufdatum-Tracker")
-        .arg(format!(
-            "{} Artikel laufen bald ab oder sind abgelaufen",
-            anzahl
-        ))
-        .status();
-
-    match notify_result {
-        Ok(status) if !status.success() => {
-            log_schreiben("WARNUNG: notify-send schlug fehl");
+    let has_display = std::env::var("DISPLAY").is_ok()
+        || std::env::var("WAYLAND_DISPLAY").is_ok();
+    if has_display {
+        let notify_result = std::process::Command::new("notify-send")
+            .arg("--urgency=normal")
+            .arg("--icon=dialog-warning")
+            .arg("Ablaufdatum-Tracker")
+            .arg(format!(
+                "{} Artikel laufen bald ab oder sind abgelaufen",
+                anzahl
+            ))
+            .status();
+        match notify_result {
+            Ok(status) if !status.success() => {
+                log_schreiben("WARNUNG: notify-send schlug fehl");
+            }
+            Err(e) => {
+                log_schreiben(&format!("WARNUNG: notify-send nicht gefunden: {}", e));
+            }
+            _ => {}
         }
-        Err(e) => {
-            log_schreiben(&format!("WARNUNG: notify-send nicht gefunden: {}", e));
-        }
-        _ => {}
     }
 
     let config = config_laden();
@@ -96,6 +99,9 @@ fn run() -> Result<(), String> {
 }
 
 fn config_pfad() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("ABLAUFDATUM_CONFIG") {
+        return Some(PathBuf::from(p));
+    }
     Some(
         dirs::config_dir()?
             .join("ablaufdatum-tracker")
@@ -104,9 +110,14 @@ fn config_pfad() -> Option<PathBuf> {
 }
 
 fn config_laden() -> Option<Config> {
+    let custom = std::env::var("ABLAUFDATUM_CONFIG").ok();
     let pfad = config_pfad()?;
     if !pfad.exists() {
-        beispiel_config_erstellen();
+        // Only try to write the example template when using the default user path,
+        // not when an explicit path was provided (e.g. by a system service).
+        if custom.is_none() {
+            beispiel_config_erstellen();
+        }
         return None;
     }
     let inhalt = std::fs::read_to_string(&pfad).ok()?;
@@ -240,9 +251,16 @@ fn email_senden(cfg: &EmailConfig, anzahl: usize, body: &str) -> Result<(), Stri
     Ok(())
 }
 
+fn log_pfad() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("ABLAUFDATUM_LOG") {
+        return Some(PathBuf::from(p));
+    }
+    Some(dirs::data_local_dir()?.join("ablaufdatum-tracker").join("checker.log"))
+}
+
 fn log_schreiben(nachricht: &str) {
-    let pfad = match dirs::data_local_dir() {
-        Some(d) => d.join("ablaufdatum-tracker").join("checker.log"),
+    let pfad = match log_pfad() {
+        Some(p) => p,
         None => return,
     };
 

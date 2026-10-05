@@ -1,0 +1,20 @@
+[Unit]
+Description=Ablaufdatum-Tracker Benachrichtigungsdienst
+After=network.target
+
+[Service]
+Type=oneshot
+User=ablaufdatum
+Group=ablaufdatum
+ExecStart=/usr/local/bin/ablaufdatum-checker
+EnvironmentFile=/etc/ablaufdatum/env
+Environment=ABLAUFDATUM_CSV=/var/lib/ablaufdatum/artikel.csv
+Environment=ABLAUFDATUM_CONFIG=/etc/ablaufdatum/config.toml
+Environment=ABLAUFDATUM_LOG=/var/lib/ablaufdatum/checker.log
+StateDirectory=ablaufdatum
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
