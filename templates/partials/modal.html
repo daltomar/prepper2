@@ -1,0 +1,40 @@
+<div class="modal-overlay" onclick="if(event.target===this)document.getElementById('modal-container').innerHTML=''">
+  <div class="modal-dialog">
+    <h2>Artikel bearbeiten</h2>
+    <form hx-put="/artikel/{{ id }}"
+          hx-target="#main-content"
+          hx-swap="outerHTML">
+      <div class="form-grid">
+        <label>Name *</label>
+        <div>
+          <input type="text" name="name" value="{{ name }}" class="input-name">
+          {% if !fehler_name.is_empty() %}<span class="field-error">{{ fehler_name }}</span>{% endif %}
+        </div>
+        <label>Ablaufdatum *</label>
+        <div>
+          <input type="text" name="ablaufdatum" value="{{ ablaufdatum }}" placeholder="TT.MM.JJJJ" class="input-datum">
+          {% if !fehler_ablaufdatum.is_empty() %}<span class="field-error">{{ fehler_ablaufdatum }}</span>{% endif %}
+        </div>
+        <label>Kaufdatum</label>
+        <div>
+          <input type="text" name="kaufdatum" value="{{ kaufdatum }}" placeholder="TT.MM.JJJJ" class="input-datum">
+          {% if !fehler_kaufdatum.is_empty() %}<span class="field-error">{{ fehler_kaufdatum }}</span>{% endif %}
+        </div>
+        <label>Menge</label>
+        <div><input type="text" name="menge" value="{{ menge }}" class="input-menge"></div>
+        <label>Bemerkung</label>
+        <div><input type="text" name="bemerkung" value="{{ bemerkung }}" class="input-bemerkung"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn-save">Speichern</button>
+        <button type="button" class="btn-delete"
+                hx-delete="/artikel/{{ id }}"
+                hx-confirm="Artikel &#39;{{ name }}&#39; wirklich löschen?"
+                hx-target="#main-content"
+                hx-swap="outerHTML">Löschen</button>
+        <button type="button" class="btn-cancel"
+                onclick="document.getElementById('modal-container').innerHTML=''">Abbrechen</button>
+      </div>
+    </form>
+  </div>
+</div>

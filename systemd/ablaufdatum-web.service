@@ -1,0 +1,13 @@
+[Unit]
+Description=Ablaufdatum-Tracker Web Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/ablaufdatum-tracker
+Environment=ABLAUFDATUM_PASSWORD=changeme
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

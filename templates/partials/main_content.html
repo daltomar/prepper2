@@ -1,0 +1,94 @@
+<div id="main-content">
+{% if !fehler.is_empty() %}<div class="error-banner">{{ fehler }}</div>{% endif %}
+
+<div class="filter-bar">
+  <span>Filter:</span>
+  <button class="filter-btn{% if filter == "alle" %} active{% endif %}"
+          hx-get="/"
+          hx-target="#main-content"
+          hx-swap="outerHTML">Alle</button>
+  <button class="filter-btn{% if filter == "abgelaufen" %} active{% endif %}"
+          hx-get="/?filter=abgelaufen"
+          hx-target="#main-content"
+          hx-swap="outerHTML">Abgelaufen</button>
+  <button class="filter-btn{% if filter == "kritisch" %} active{% endif %}"
+          hx-get="/?filter=kritisch"
+          hx-target="#main-content"
+          hx-swap="outerHTML">Bald kritisch</button>
+  <button class="filter-btn{% if filter == "warnung" %} active{% endif %}"
+          hx-get="/?filter=warnung"
+          hx-target="#main-content"
+          hx-swap="outerHTML">Warnung</button>
+  <button class="filter-btn{% if filter == "ok" %} active{% endif %}"
+          hx-get="/?filter=ok"
+          hx-target="#main-content"
+          hx-swap="outerHTML">OK</button>
+</div>
+
+<table class="artikel-tabelle">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Kaufdatum</th>
+      <th>Menge</th>
+      <th>Ablaufdatum</th>
+      <th>Bemerkung</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for zeile in zeilen %}
+    <tr class="{{ zeile.status_class }}"
+        hx-get="/artikel/{{ zeile.id }}/modal"
+        hx-trigger="dblclick"
+        hx-target="#modal-container"
+        hx-swap="innerHTML">
+      <td>{{ zeile.name }}</td>
+      <td>{{ zeile.kaufdatum }}</td>
+      <td>{{ zeile.menge }}</td>
+      <td>{{ zeile.ablaufdatum }}</td>
+      <td>{{ zeile.bemerkung }}</td>
+    </tr>
+    {% endfor %}
+    {% if zeilen.is_empty() %}
+    <tr><td colspan="5" class="empty-row">Keine Artikel vorhanden.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<section class="formular">
+  <h2>Neuen Artikel hinzufügen</h2>
+  <form hx-post="/artikel"
+        hx-target="#main-content"
+        hx-swap="outerHTML">
+    <div class="form-row">
+      <div class="form-field">
+        <label>Name *</label>
+        <input type="text" name="name" value="{{ form.name }}" placeholder="Produktname" class="input-name">
+        {% if !form.fehler_name.is_empty() %}<span class="field-error">{{ form.fehler_name }}</span>{% endif %}
+      </div>
+      <div class="form-field">
+        <label>Ablaufdatum *</label>
+        <input type="text" name="ablaufdatum" value="{{ form.ablaufdatum }}" placeholder="TT.MM.JJJJ" class="input-datum">
+        {% if !form.fehler_ablaufdatum.is_empty() %}<span class="field-error">{{ form.fehler_ablaufdatum }}</span>{% endif %}
+      </div>
+      <div class="form-field">
+        <label>Kaufdatum</label>
+        <input type="text" name="kaufdatum" value="{{ form.kaufdatum }}" placeholder="TT.MM.JJJJ" class="input-datum">
+        {% if !form.fehler_kaufdatum.is_empty() %}<span class="field-error">{{ form.fehler_kaufdatum }}</span>{% endif %}
+      </div>
+      <div class="form-field">
+        <label>Menge</label>
+        <input type="text" name="menge" value="{{ form.menge }}" placeholder="z. B. 500 g" class="input-menge">
+      </div>
+      <div class="form-field">
+        <label>Bemerkung</label>
+        <input type="text" name="bemerkung" value="{{ form.bemerkung }}" placeholder="Optional" class="input-bemerkung">
+      </div>
+      <div class="form-field">
+        <label>&nbsp;</label>
+        <button type="submit" class="btn-primary">Hinzufügen</button>
+      </div>
+    </div>
+  </form>
+</section>
+</div>

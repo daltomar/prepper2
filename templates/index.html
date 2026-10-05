@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ablaufdatum-Tracker</title>
+<script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" crossorigin="anonymous"></script>
+<style>
+* { box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 16px 20px; background: #f5f5f5; color: #222; }
+h1 { margin: 0 0 16px; font-size: 1.4rem; color: #333; }
+h2 { font-size: 0.95rem; margin: 0 0 10px; color: #555; text-transform: uppercase; letter-spacing: .04em; }
+
+.error-banner { background: #ffcdd2; color: #b71c1c; padding: 10px 14px; margin-bottom: 12px; border-radius: 4px; border: 1px solid #ef9a9a; font-size: 0.9rem; }
+
+.filter-bar { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.filter-bar span { font-size: 0.85rem; color: #666; margin-right: 2px; }
+.filter-btn { padding: 4px 12px; border: 1px solid #bbb; background: #fff; cursor: pointer; border-radius: 4px; font-size: 0.83rem; transition: background .1s; }
+.filter-btn:hover { background: #e8e8e8; }
+.filter-btn.active { background: #1976d2; color: #fff; border-color: #1565c0; }
+
+.artikel-tabelle { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.1); margin-bottom: 20px; }
+.artikel-tabelle th { background: #e0e0e0; text-align: left; padding: 8px 12px; font-size: 0.82rem; border-bottom: 2px solid #bbb; white-space: nowrap; }
+.artikel-tabelle td { padding: 7px 12px; border-bottom: 1px solid rgba(0,0,0,.06); font-size: 0.88rem; }
+.artikel-tabelle tbody tr:last-child td { border-bottom: none; }
+.artikel-tabelle tbody tr { cursor: pointer; }
+.artikel-tabelle tbody tr:hover { filter: brightness(0.95); }
+.empty-row { text-align: center; color: #999; font-style: italic; padding: 20px 12px !important; cursor: default !important; }
+.artikel-tabelle tbody tr:has(.empty-row):hover { filter: none; }
+
+.status-ok         { background: #ffffff; color: #000000; }
+.status-warnung    { background: #fff176; color: #000000; }
+.status-kritisch   { background: #fff176; color: #d32f2f; }
+.status-abgelaufen { background: #ffcdd2; color: #000000; }
+
+.formular { background: #fff; padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.form-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.form-field { display: flex; flex-direction: column; gap: 3px; }
+.form-field label { font-size: 0.78rem; color: #666; font-weight: 500; }
+input[type=text] { padding: 5px 8px; border: 1px solid #ccc; border-radius: 3px; font-size: 0.88rem; }
+input[type=text]:focus { outline: 2px solid #1976d2; border-color: transparent; }
+.input-name     { width: 260px; }
+.input-datum    { width: 110px; }
+.input-menge    { width: 80px; }
+.input-bemerkung{ width: 260px; }
+.btn-primary { padding: 6px 16px; background: #1976d2; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 0.88rem; }
+.btn-primary:hover { background: #1565c0; }
+.field-error { color: #d32f2f; font-size: 0.74rem; margin-top: 1px; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 200; }
+.modal-dialog { background: #fff; padding: 24px; border-radius: 6px; min-width: 420px; max-width: 560px; box-shadow: 0 6px 24px rgba(0,0,0,.28); }
+.modal-dialog h2 { margin: 0 0 18px; font-size: 1.05rem; }
+.form-grid { display: grid; grid-template-columns: 110px 1fr; gap: 10px 12px; align-items: start; margin-bottom: 18px; }
+.form-grid label { font-size: 0.83rem; color: #666; padding-top: 7px; font-weight: 500; }
+.form-grid div { display: flex; flex-direction: column; gap: 2px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; border-top: 1px solid #eee; }
+.modal-actions button { padding: 6px 14px; border-radius: 3px; cursor: pointer; font-size: 0.88rem; }
+.btn-save   { background: #1976d2; color: #fff; border: none; }
+.btn-save:hover { background: #1565c0; }
+.btn-delete { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+.btn-delete:hover { background: #ffcdd2; }
+.btn-cancel { background: #fff; color: #444; border: 1px solid #ccc; }
+.btn-cancel:hover { background: #f5f5f5; }
+</style>
+</head>
+<body>
+<h1>Ablaufdatum-Tracker</h1>
+{% include "partials/main_content.html" %}
+<div id="modal-container"></div>
+</body>
+</html>
