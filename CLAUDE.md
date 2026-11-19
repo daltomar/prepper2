@@ -52,11 +52,15 @@ ablaufdatum-tracker/
 │   └── partials/
 │       ├── main_content.html ← HTMX-Partial: Filter, Tabelle, Formular
 │       └── modal.html        ← HTMX-Partial: Bearbeitungs-Modal
+├── debian/
+│   └── postinst           ← Hinweistext nach Paketinstallation (Desktop: Timer per
+│                             systemctl --user aktivieren, optionale config.toml)
 ├── deploy/                ← System-Deployment (Raspberry Pi, Nginx)
 │   ├── ablaufdatum-web.service
 │   ├── ablaufdatum-checker.service
 │   ├── ablaufdatum-checker.timer
-│   ├── env.example
+│   ├── env.example        ← /etc/ablaufdatum/env (Passwort, Bind-Adresse)
+│   ├── config.toml.example ← /etc/ablaufdatum/config.toml ([email], nur Platzhalter)
 │   ├── nginx-ablaufdatum.conf
 │   └── README.md
 └── systemd/               ← User-Level-Deployment (Desktop)
@@ -90,7 +94,9 @@ pub enum AblaufStatus { Abgelaufen, KritischBald, WarnungBald, Ok }
 name,kaufdatum,menge,ablaufdatum,bemerkung
 ```
 - Datumsformat in CSV: `YYYY-MM-DD`
-- `id` wird nicht gespeichert (beim Laden als Zeilenindex vergeben)
+- `id` wird nicht gespeichert (beim Laden als Zeilenindex vergeben, neue Artikel `max + 1`).
+  Nach einem Neustart sind die IDs daher neu nummeriert → Schutz über die Seiten-Generation,
+  siehe „Veraltete Seiten“ unter HTTP-Routen.
 
 **Menge:** optionale Stückzahl, ganze Zahl >= 1 (`Option<u32>`). Einheiten/Gewichte wie
 „500 g“ gehören in Name oder Bemerkung. `parse_menge` (in `artikel.rs`, genutzt von
@@ -138,20 +144,50 @@ CSS-Klassen: `status-ok`, `status-warnung`, `status-kritisch`, `status-abgelaufe
 | `GET`    | `/`                   | `index`         | Vollständige Seite oder HTMX-Partial |
 | `GET`    | `/?filter=X`          | `index`         | Gefilterte Tabelle                   |
 | `POST`   | `/artikel`            | `hinzufuegen`   | Artikel hinzufügen                   |
-| `GET`    | `/artikel/:id/modal`  | `zeige_modal`   | Edit-Modal-Partial laden             |
-| `PUT`    | `/artikel/:id`        | `bearbeiten`    | Artikel speichern                    |
-| `DELETE` | `/artikel/:id?filter=X` | `loeschen`    | Artikel löschen                      |
+| `GET`    | `/?filter=X&veraltet=1` | `index`       | Nach abgelehnter veralteter Anfrage: Fehlerbanner |
+| `GET`    | `/artikel/:id/modal?gen=G` | `zeige_modal` | Edit-Modal-Partial laden          |
+| `PUT`    | `/artikel/:id`        | `bearbeiten`    | Artikel speichern (`gen` im Formular) |
+| `DELETE` | `/artikel/:id?filter=X&gen=G` | `loeschen` | Artikel löschen                  |
 | `GET`    | `/static/htmx-2.0.4.min.js` | `htmx_js` | HTMX (eingebettet, `immutable`)  |
 
-**Filter bleibt erhalten:** `main_content.html` enthält `<input type="hidden" id="aktiver-filter"
-name="filter" value="{{ filter }}">`. Hinzufügen-Formular, Modal-Formular (Speichern) und
-Löschen-Button schicken ihn per `hx-include="#aktiver-filter"` mit (`ArtikelFormData::filter`
-mit `#[serde(default)]`; bei `DELETE` als Query-Parameter, da HTMX 2 DELETE-Parameter in die
-URL schreibt). Die Antwort wird mit demselben Filter gerendert. `normalisiere_filter()` lässt nur
+**Seitenkontext:** `main_content.html` enthält `<div id="seiten-kontext" hidden>` mit zwei
+versteckten Feldern: `#aktiver-filter` (`name="filter"`) und `#seiten-generation` (`name="gen"`).
+Hinzufügen-Formular, Tabellenzeilen (Modal öffnen), Modal-Formular (Speichern) und
+Löschen-Button schicken beide per `hx-include="#seiten-kontext"` mit (POST/PUT im Formular,
+`ArtikelFormData::filter`/`gen`; GET/DELETE als Query-Parameter, da HTMX 2 dort die Parameter
+in die URL schreibt, `FilterParams`).
+
+**Filter bleibt erhalten:** Die Antwort wird mit dem mitgeschickten Filter gerendert. Die Antwort wird mit demselben Filter gerendert. `normalisiere_filter()` lässt nur
 `alle|abgelaufen|kritisch|warnung|ok` zu, alles andere (fehlend, leer, unbekannt) → `alle`.
 Ist der gerade hinzugefügte/bearbeitete Artikel im aktiven Filter nicht sichtbar, erscheint ein
 blauer Hinweis (`hinweis`, CSS `info-banner`): „„X“ wurde gespeichert, ist im Filter „Y“ aber
 nicht sichtbar.“ Die Browser-URL ändert sich beim Filtern nicht; ein Neuladen zeigt wieder „Alle“.
+
+**Veraltete Seiten (Generation):** Die Artikel-IDs sind Zeilenindizes und werden beim Start neu
+vergeben. Eine vor einem Neustart geladene Seite würde mit ihrer alten ID sonst einen *anderen*
+Artikel bearbeiten/löschen. Deshalb erzeugt `AppState::neu()` pro Serverstart ein zufälliges
+Token `AppState::generation` (16 Hex-Zeichen, ohne Zusatz-Crate über `RandomState`). Jede Seite
+trägt es in `#seiten-generation`. `zeige_modal`, `hinzufuegen`, `bearbeiten` und `loeschen`
+prüfen es zuerst (`generation_passt`); **fehlt** `gen` oder passt es nicht, wird nichts gelesen
+oder geändert, und `veraltet_antwort()` antwortet mit `409 Conflict` + `HX-Redirect:
+/?filter=X&veraltet=1`. HTMX wertet `HX-Redirect` vor dem Statuscode aus und lädt die ganze
+Seite neu (neue IDs, neue Generation, nach einem Update auch neues CSS/JS). `index` zeigt bei
+`veraltet` das rote Banner „Die Seite war veraltet und wurde neu geladen. Bitte erneut
+versuchen.“; ein Skript in `index.html` entfernt danach die Parameter aus der Adresszeile
+(`history.replaceState`). `GET /` (auch Filter-Klicks) braucht kein `gen`, es liefert immer die
+aktuelle Generation mit. Auch curl-Clients müssen `gen` mitschicken (aus der Seite lesen).
+
+**Artikel nicht gefunden:** Existiert die ID nicht (mehr), z. B. auf einem anderen Gerät
+gelöscht, zeigen `bearbeiten`, `loeschen` und `zeige_modal` die Tabelle mit dem Fehlerbanner
+„Artikel nicht gefunden – wurde er inzwischen gelöscht?“ und schließen das Modal (OOB). Es wird
+nichts gespeichert. `zeige_modal` leitet dafür per `HX-Retarget: #main-content` um.
+
+**Doppeltes Absenden:** Ohne `hx-sync` reiht HTMX ein zweites Absenden während einer laufenden
+Anfrage ein und schickt es danach (→ doppelte Artikel). Das Hinzufügen-Formular und das
+Modal-Formular haben `hx-sync="this:drop"` (zweites Absenden wird verworfen); der Löschen-Button
+`hx-sync="closest form:drop"` (gemeinsame Warteschlange mit Speichern). `hx-disabled-elt` sperrt
+währenddessen den Hinzufügen-Button bzw. `#modal-speichern` und `#modal-loeschen`
+(CSS `button:disabled`). Serverseitig gibt es bewusst keine Duplikat-Erkennung.
 
 Alle schreibenden Operationen halten den `RwLock` nur während Mutation + CSV-Speicherung.
 HTMX-Anfragen (Header `HX-Request: true`) erhalten das `main_content.html`-Partial
@@ -255,8 +291,10 @@ die Datei verwerfen, falls sie verändert wurde. Herkunft/Prüfung: `static/READ
   fehlendem `ABLAUFDATUM_PASSWORD`. Der Checker bricht bei Ladefehlern ebenfalls ab (Exit 1, Log).
 - `laden_aus(pfad)`: wie `laden()`, mit explizitem Pfad (Web-Server und Tests). `laden()`
   (Pfad aus `csv_pfad()`) nutzt der Checker.
-- `speichern(pfad, artikel)`: atomisches Schreiben via `.csv.tmp` → umbenennen. Der Web-Server
-  übergibt `AppState::csv_pfad` (beim Start einmal per `csv_pfad()` bestimmt).
+- `speichern(pfad, artikel)`: atomisch und dauerhaft (Stromausfall, SD-Karte am Pi):
+  `.csv.tmp` schreiben → `sync_all()` auf die Temp-Datei → umbenennen → `sync_all()` auf das
+  Verzeichnis (`verzeichnis_synchronisieren`; Fehler dort werden ignoriert, z. B. Windows).
+  Der Web-Server übergibt `AppState::csv_pfad` (beim Start einmal per `csv_pfad()` bestimmt).
 
 ---
 
@@ -298,8 +336,16 @@ make install-pi       # build + sudo copy + systemctl restart
 ```
 
 Wichtigste Schritte: System-User `ablaufdatum` anlegen, Binaries nach `/usr/local/bin/`,
-`/etc/ablaufdatum/env` mit Passwort, Units aus `deploy/` nach `/etc/systemd/system/`,
-Nginx-Site aus `deploy/nginx-ablaufdatum.conf`, Unbound-Host-Override in OPNsense.
+`/etc/ablaufdatum/env` mit Passwort (aus `deploy/env.example`), optional
+`/etc/ablaufdatum/config.toml` (aus `deploy/config.toml.example`), Units aus `deploy/` nach
+`/etc/systemd/system/`, Nginx-Site aus `deploy/nginx-ablaufdatum.conf`, Unbound-Host-Override
+in OPNsense. **Update:** vorher `artikel.csv` sichern; geänderte Units erneut kopieren +
+`systemctl daemon-reload` (`make install-pi` macht beides nicht).
+
+**Units:** Die Timer (`deploy/` und `systemd/`) verweisen nur per `Unit=` auf den Checker, ohne
+`Requires=` (sonst startet der Checker bei jedem Boot bzw. Timer-Start sofort mit).
+`deploy/ablaufdatum-checker.service` hat `Wants=`/`After=network-online.target` (SMTP braucht
+ein konfiguriertes Netz).
 
 ---
 
@@ -347,4 +393,5 @@ cargo test
 - [ ] Farbkodierung korrekt für alle 4 Status-Werte
 - [ ] Checker läuft headless ohne notify-send-Warnung im Log
 - [ ] Checker sendet E-Mail wenn `[email]` in `config.toml` konfiguriert
-- [ ] `systemd-analyze verify deploy/*.service` ohne kritische Fehler
+- [ ] `systemd-analyze verify deploy/*.service deploy/*.timer` ohne kritische Fehler (fehlende
+      Binaries unter `/usr/local/bin` werden auf Entwicklungsrechnern gemeldet, das ist ok)

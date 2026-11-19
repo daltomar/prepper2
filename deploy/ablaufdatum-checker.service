@@ -1,6 +1,8 @@
 [Unit]
 Description=Ablaufdatum-Tracker Benachrichtigungsdienst
-After=network.target
+# E-Mail-Versand braucht ein konfiguriertes Netz (nicht nur network.target).
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=oneshot

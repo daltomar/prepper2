@@ -72,6 +72,8 @@ input[type=date] { min-height: 2.1em; background: #fff; color: inherit; font-fam
 .btn-delete:hover { background: #ffcdd2; }
 .btn-cancel { background: #fff; color: #444; border: 1px solid #ccc; }
 .btn-cancel:hover { background: #f5f5f5; }
+/* Während einer laufenden Anfrage gesperrt (hx-disabled-elt). */
+button:disabled { opacity: .6; cursor: progress; }
 
 /* Touch-Geräte / schmale Bildschirme: mind. 16px in Formularelementen, sonst zoomt iOS beim Fokus. */
 @media (hover: none), (max-width: 600px) {
@@ -92,6 +94,11 @@ input[type=date] { min-height: 2.1em; background: #fff; color: inherit; font-fam
 }
 </style>
 <script>
+  // Nach dem Neuladen wegen veralteter Seite (/?filter=…&veraltet=1): Banner ist gerendert,
+  // Parameter aus der Adresszeile entfernen, damit ein erneutes Neuladen ihn nicht wieder zeigt.
+  if (new URLSearchParams(location.search).has('veraltet')) {
+    history.replaceState(null, '', location.pathname);
+  }
   // Zeitpunkt merken, an dem das Modal geladen wurde: auf Touch-Geräten öffnet der erste Tap
   // das Modal, ein zweiter Tap (Doppeltipp aus Gewohnheit) würde sonst sofort das Overlay
   // treffen und es wieder schließen. Siehe Overlay-onclick in partials/modal.html.
