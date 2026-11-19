@@ -37,7 +37,7 @@
   </thead>
   <tbody>
     {% for zeile in zeilen %}
-    <tr class="{{ zeile.status_class }}"
+    <tr class="{{ zeile.status_class }}{% if zeile.jahreswechsel %} jahreswechsel{% endif %}"
         hx-get="/artikel/{{ zeile.id }}/modal"
         hx-trigger="dblclick"
         hx-target="#modal-container"

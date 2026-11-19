@@ -135,6 +135,14 @@ statt der vollständigen Seite.
     „Tage bis Ablauf“ = `(ablaufdatum - heute).num_days()` (in `build_zeilen` berechnet,
     Feld `ArtikelZeile::tage_bis_ablauf: i64`), als Ganzzahl rechtsbündig (CSS-Klasse `zahl`):
     positiv = Tage verbleibend, `0` = heute, negativ = abgelaufen.
+  - **Sortierung:** `build_zeilen` sortiert die sichtbaren Zeilen (nach dem Statusfilter)
+    immer stabil aufsteigend nach `ablaufdatum` — unabhängig von der Reihenfolge in der
+    CSV bzw. im `Vec` (`laden()` übernimmt die CSV-Reihenfolge unverändert).
+  - **Jahres-Trennlinie:** `ArtikelZeile::jahreswechsel: bool` ist `true`, wenn das Jahr des
+    Ablaufdatums sich gegenüber der *vorherigen sichtbaren* Zeile ändert (erste Zeile: immer
+    `false`). Solche Zeilen erhalten die CSS-Klasse `jahreswechsel` → `border-top: 3px solid #333`
+    auf den Zellen (sichtbar über allen Statusfarben und beim Hover). Nur eine Linie, keine
+    zusätzliche Jahres-Überschriftszeile.
   - Formularfelder: Name *, Ablaufdatum *, Menge, Bemerkung (kein Kaufdatum).
 - **`partials/modal.html`**: Bearbeitungs-Overlay mit denselben Feldern wie das
   Hinzufügen-Formular (kein Kaufdatum). Wird via `hx-get="/artikel/:id/modal"`
