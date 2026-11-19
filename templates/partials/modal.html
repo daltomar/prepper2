@@ -1,4 +1,4 @@
-<div class="modal-overlay" onclick="if(event.target===this)document.getElementById('modal-container').innerHTML=''">
+<div class="modal-overlay" onclick="if(event.target===this && Date.now()-(window.modalGeoeffnetUm||0)>400)document.getElementById('modal-container').innerHTML=''">
   <div class="modal-dialog">
     <h2>Artikel bearbeiten</h2>
     <form hx-put="/artikel/{{ id }}"
