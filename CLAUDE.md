@@ -168,6 +168,28 @@ statt der vollständigen Seite.
   in `#modal-container` geladen. Fehler beim Speichern werden über `HX-Retarget` /
   `HX-Reswap` Response-Header dorthin zurückgeleitet.
 
+### Mobile / Touch-Verhalten
+
+- **Modal öffnen:** Desktop per Doppelklick, Touch-Geräte per einfachem Tap:
+  `hx-trigger="dblclick, click[window.matchMedia('(hover: none)').matches]"`. Auf Geräten mit
+  Hover (Maus) wird der `click`-Trigger herausgefiltert, ein Doppelklick lädt das Modal daher
+  genau einmal.
+- **Doppeltipp-Schutz:** Ein Skript in `index.html` merkt sich bei `htmx:afterSwap` auf
+  `#modal-container` den Zeitpunkt (`window.modalGeoeffnetUm`). Das Overlay schließt sich erst
+  bei Klicks > 400 ms danach. Sonst würde der zweite Tap eines gewohnheitsmäßigen Doppeltipps
+  das gerade geöffnete Modal sofort wieder schließen.
+- `touch-action: manipulation` auf Tabellenzeilen und Buttons (kein Doppeltipp-Zoom).
+- **Kein Auto-Zoom bei Fokus:** In `@media (hover: none), (max-width: 600px)` haben Inputs,
+  Selects, Textareas und Buttons `font-size: 16px` (iOS zoomt bei < 16px). Desktop behält 0.88rem.
+- **Modal:** `width: min(560px, calc(100vw - 24px))`, `max-height: calc(100dvh - 24px)` mit
+  `overflow-y: auto`; Inputs im Modal 100 % breit; Aktions-Buttons umbrechen (`flex-wrap`).
+- **Schmale Bildschirme (≤ 600px):** `.form-grid` im Modal einspaltig (Label über Feld),
+  Hinzufügen-Formular gestapelt mit Feldern in voller Breite.
+- **Tabelle:** liegt in `<div class="tabelle-scroll">` mit `overflow-x: auto`. Nur die Tabelle
+  scrollt horizontal, nicht die Seite.
+- Viewport-Meta bewusst **ohne** `maximum-scale`/`user-scalable=no`, damit Pinch-Zoom
+  (Barrierefreiheit) erhalten bleibt.
+
 Templates werden von Askama zur Build-Zeit kompiliert — keine Template-Dateien nötig
 zur Laufzeit.
 

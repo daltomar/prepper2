@@ -25,6 +25,7 @@
           hx-swap="outerHTML">OK</button>
 </div>
 
+<div class="tabelle-scroll">
 <table class="artikel-tabelle">
   <thead>
     <tr>
@@ -39,7 +40,7 @@
     {% for zeile in zeilen %}
     <tr class="{{ zeile.status_class }}{% if zeile.jahreswechsel %} jahreswechsel{% endif %}"
         hx-get="/artikel/{{ zeile.id }}/modal"
-        hx-trigger="dblclick"
+        hx-trigger="dblclick, click[window.matchMedia('(hover: none)').matches]"
         hx-target="#modal-container"
         hx-swap="innerHTML">
       <td>{{ zeile.name }}</td>
@@ -54,6 +55,7 @@
     {% endif %}
   </tbody>
 </table>
+</div>
 
 <section class="formular">
   <h2>Neuen Artikel hinzufügen</h2>
