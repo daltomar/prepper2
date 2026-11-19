@@ -258,7 +258,11 @@ pub struct FilterParams {
     pub filter: Option<String>,
 }
 
-#[derive(Deserialize)]
+/// Formulardaten für Hinzufügen/Bearbeiten. Alle Felder sind `#[serde(default)]`: Fehlt ein
+/// Feld (z. B. curl ohne `bemerkung`), gibt es kein nacktes 422 von Axum, sondern die normale
+/// Validierung greift (Name/Ablaufdatum fehlen → Feldfehler im Formular, Rest optional).
+#[derive(Deserialize, Default)]
+#[serde(default)]
 pub struct ArtikelFormData {
     pub name: String,
     pub ablaufdatum: String,
@@ -266,7 +270,6 @@ pub struct ArtikelFormData {
     pub bemerkung: String,
     /// Aktiver Filter der Seite (verstecktes Feld `#aktiver-filter`), damit die Antwort
     /// gefiltert bleibt. Fehlt er (alte Seite im Browser, curl), gilt `"alle"`.
-    #[serde(default)]
     pub filter: String,
 }
 
@@ -361,7 +364,7 @@ pub async fn hinzufuegen(
     });
     artikel.sort_by_key(|a| a.ablaufdatum);
 
-    let fehler = speichern(&artikel).err().unwrap_or_default();
+    let fehler = speichern(&state.csv_pfad, &artikel).err().unwrap_or_default();
     let heute = chrono::Local::now().date_naive();
     let zeilen = build_zeilen(&artikel, heute, filter);
     let hinweis = artikel
@@ -434,7 +437,7 @@ pub async fn bearbeiten(
     }
     artikel.sort_by_key(|a| a.ablaufdatum);
 
-    let fehler = speichern(&artikel).err().unwrap_or_default();
+    let fehler = speichern(&state.csv_pfad, &artikel).err().unwrap_or_default();
     let heute = chrono::Local::now().date_naive();
     // Fällt der Artikel durch die Änderung aus dem Filter, verschwindet die Zeile: Hinweis zeigen.
     let hinweis = artikel
@@ -455,7 +458,7 @@ pub async fn loeschen(
     let mut artikel = state.artikel.write().await;
     artikel.retain(|a| a.id != id);
 
-    let fehler = speichern(&artikel).err().unwrap_or_default();
+    let fehler = speichern(&state.csv_pfad, &artikel).err().unwrap_or_default();
     let heute = chrono::Local::now().date_naive();
     main_with_oob_modal_clear(&artikel, heute, filter, FormularState::default(), fehler, String::new())
 }

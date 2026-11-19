@@ -103,3 +103,36 @@ mod tests_menge {
         assert!(parse_menge("99999999999").is_err());
     }
 }
+
+#[cfg(test)]
+mod tests_status {
+    use super::*;
+
+    fn mit_ablauf(d: NaiveDate) -> Artikel {
+        Artikel { id: 0, name: "x".into(), kaufdatum: None, menge: None, ablaufdatum: d, bemerkung: None }
+    }
+
+    #[test]
+    fn grenzen_der_status_stufen() {
+        let heute = NaiveDate::from_ymd_opt(2026, 11, 19).unwrap();
+        let d = |y, m, t| NaiveDate::from_ymd_opt(y, m, t).unwrap();
+        let s = |datum| mit_ablauf(datum).status(heute);
+        assert_eq!(s(d(2026, 11, 18)), AblaufStatus::Abgelaufen);
+        assert_eq!(s(d(2026, 11, 19)), AblaufStatus::KritischBald); // heute = noch nicht abgelaufen
+        assert_eq!(s(d(2027, 1, 19)), AblaufStatus::KritischBald);  // genau 2 Monate
+        assert_eq!(s(d(2027, 1, 20)), AblaufStatus::WarnungBald);
+        assert_eq!(s(d(2027, 3, 19)), AblaufStatus::WarnungBald);   // genau 4 Monate
+        assert_eq!(s(d(2027, 3, 20)), AblaufStatus::Ok);
+    }
+
+    #[test]
+    fn parse_datum_formate() {
+        let erwartet = NaiveDate::from_ymd_opt(2027, 6, 10);
+        assert_eq!(parse_datum("10.06.2027"), erwartet);
+        assert_eq!(parse_datum("2027-06-10"), erwartet);
+        assert_eq!(parse_datum(" 10.6.2027 "), erwartet);
+        assert_eq!(parse_datum("31.02.2027"), None);
+        assert_eq!(parse_datum("06/10/2027"), None);
+        assert_eq!(parse_datum(""), None);
+    }
+}
