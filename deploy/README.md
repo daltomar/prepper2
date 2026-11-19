@@ -193,3 +193,18 @@ sudo journalctl -u ablaufdatum-web.service -f
 sudo journalctl -u ablaufdatum-checker.service
 cat /var/lib/ablaufdatum/checker.log
 ```
+
+### Web service stays "failed" after start
+
+If `artikel.csv` cannot be read completely (wrong header, missing name, invalid date, wrong
+number of columns), the server **refuses to start** instead of starting with an empty list,
+which the next save would write over your data. It exits with code 2, and systemd does
+not restart it (`RestartPreventExitStatus=2`). The journal shows the file and line:
+
+```bash
+sudo journalctl -u ablaufdatum-web.service -n 20
+# Fehler: Artikel-CSV konnte nicht geladen werden: /var/lib/ablaufdatum/artikel.csv: Zeile 7: ungültiges Ablaufdatum '31.12.2027'
+```
+
+Fix that line (dates in the CSV are `YYYY-MM-DD`) or restore a backup, then
+`sudo systemctl restart ablaufdatum-web.service`.

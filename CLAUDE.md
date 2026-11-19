@@ -210,7 +210,16 @@ zur Laufzeit.
 ## CSV I/O (`src/csv_io.rs`)
 
 - `csv_pfad()`: prüft `ABLAUFDATUM_CSV`, Fallback auf `~/.local/share/ablaufdatum-tracker/artikel.csv`
-- `laden()`: leere Liste wenn Datei fehlt
+- `laden()`: leere Liste, wenn die Datei fehlt (oder 0 Byte groß ist). Sonst wird **jede** Zeile
+  verlustfrei gelesen oder es gibt einen Fehler mit Zeilennummer, nie ein stilles Überspringen:
+  falsche Kopfzeile, falsche Spaltenanzahl, fehlender Name, ungültiges Kauf- oder Ablaufdatum.
+  Nur komplett leere Zeilen werden übersprungen. Ungültige Altwerte bei Menge werden in die
+  Bemerkung migriert (siehe Datenmodell). Der Parser steckt in `lesen<R: Read>()` (Unit-Tests).
+- **Startverhalten:** Schlägt `laden()` fehl, beendet sich der Web-Server mit Exit-Code 2,
+  statt mit leerer Liste zu starten (sonst würde das nächste Speichern die Datei überschreiben).
+  Die Service-Units setzen `RestartPreventExitStatus=2`, d. h. systemd startet nicht endlos neu.
+  Der Dienst bleibt `failed`, und die Ursache steht im Journal. Exit-Code 2 gilt auch bei
+  fehlendem `ABLAUFDATUM_PASSWORD`. Der Checker bricht bei Ladefehlern ebenfalls ab (Exit 1, Log).
 - `speichern()`: atomisches Schreiben via `.csv.tmp` → umbenennen
 
 ---

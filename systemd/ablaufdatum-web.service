@@ -9,6 +9,8 @@ Environment=ABLAUFDATUM_PASSWORD=changeme
 Environment=ABLAUFDATUM_ADDR=0.0.0.0:8085
 Restart=on-failure
 RestartSec=5
+# Exit-Code 2 = CSV nicht lesbar / Passwort fehlt: Neustart hilft nicht, Dienst bleibt "failed".
+RestartPreventExitStatus=2
 
 [Install]
 WantedBy=default.target

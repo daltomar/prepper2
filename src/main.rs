@@ -17,12 +17,20 @@ use ablaufdatum_tracker::{
 async fn main() {
     let password = std::env::var("ABLAUFDATUM_PASSWORD").unwrap_or_else(|_| {
         eprintln!("Fehler: Umgebungsvariable ABLAUFDATUM_PASSWORD ist nicht gesetzt.");
-        std::process::exit(1);
+        std::process::exit(2);
     });
 
+    // Nicht mit leerer Liste weitermachen: das nächste Speichern würde die Datei überschreiben.
+    // Exit-Code 2 = Daten-/Konfigurationsfehler; systemd startet dann nicht neu
+    // (RestartPreventExitStatus=2 in den Service-Units).
     let artikel = laden().unwrap_or_else(|e| {
-        eprintln!("Warnung: CSV konnte nicht geladen werden: {e}");
-        Vec::new()
+        eprintln!("Fehler: Artikel-CSV konnte nicht geladen werden: {e}");
+        eprintln!(
+            "Der Server startet nicht, damit die Datei nicht überschrieben wird. \
+             Bitte die Datei korrigieren (oder aus einem Backup wiederherstellen) \
+             und den Dienst neu starten."
+        );
+        std::process::exit(2);
     });
 
     let state = AppState {
