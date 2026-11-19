@@ -7,7 +7,7 @@ use askama::Template;
 use chrono::Datelike;
 use serde::Deserialize;
 use crate::{
-    artikel::{AblaufStatus, Artikel, parse_datum},
+    artikel::{AblaufStatus, Artikel, parse_datum, parse_menge},
     csv_io::speichern,
     web::AppState,
 };
@@ -34,6 +34,7 @@ pub struct FormularState {
     pub bemerkung: String,
     pub fehler_name: String,
     pub fehler_ablaufdatum: String,
+    pub fehler_menge: String,
 }
 
 // ── Templates ──────────────────────────────────────────────────────────────────
@@ -66,6 +67,7 @@ struct ModalTemplate {
     bemerkung: String,
     fehler_name: String,
     fehler_ablaufdatum: String,
+    fehler_menge: String,
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -120,7 +122,7 @@ fn build_zeilen(artikel: &[Artikel], heute: chrono::NaiveDate, filter: &str) -> 
                 id: a.id,
                 name: a.name.clone(),
                 tage_bis_ablauf: (a.ablaufdatum - heute).num_days(),
-                menge: a.menge.clone().unwrap_or_default(),
+                menge: a.menge.map(|m| m.to_string()).unwrap_or_default(),
                 ablaufdatum: format_date(a.ablaufdatum),
                 bemerkung: a.bemerkung.clone().unwrap_or_default(),
                 status_class: status_class(&status).to_string(),
@@ -152,29 +154,45 @@ fn main_with_oob_modal_clear(
     }
 }
 
-fn validate_form(
-    name: &str,
-    ablaufdatum_str: &str,
-) -> (Option<chrono::NaiveDate>, String, String) {
+struct Validierung {
+    ablaufdatum: Option<chrono::NaiveDate>,
+    menge: Option<u32>,
+    fehler_name: String,
+    fehler_ablaufdatum: String,
+    fehler_menge: String,
+}
+
+impl Validierung {
+    fn hat_fehler(&self) -> bool {
+        !self.fehler_name.is_empty() || !self.fehler_ablaufdatum.is_empty() || !self.fehler_menge.is_empty()
+    }
+}
+
+fn validate_form(form: &ArtikelFormData) -> Validierung {
     let mut fehler_name = String::new();
     let mut fehler_ablaufdatum = String::new();
 
-    if name.trim().is_empty() {
+    if form.name.trim().is_empty() {
         fehler_name = "Name darf nicht leer sein.".to_string();
     }
 
-    let ablaufdatum = if ablaufdatum_str.trim().is_empty() {
+    let ablaufdatum = if form.ablaufdatum.trim().is_empty() {
         fehler_ablaufdatum = "Ablaufdatum ist Pflichtfeld.".to_string();
         None
     } else {
-        let d = parse_datum(ablaufdatum_str);
+        let d = parse_datum(&form.ablaufdatum);
         if d.is_none() {
             fehler_ablaufdatum = "Ungültiges Datum (TT.MM.JJJJ).".to_string();
         }
         d
     };
 
-    (ablaufdatum, fehler_name, fehler_ablaufdatum)
+    let (menge, fehler_menge) = match parse_menge(&form.menge) {
+        Ok(m) => (m, String::new()),
+        Err(e) => (None, e),
+    };
+
+    Validierung { ablaufdatum, menge, fehler_name, fehler_ablaufdatum, fehler_menge }
 }
 
 // ── Query/Form types ───────────────────────────────────────────────────────────
@@ -225,9 +243,9 @@ pub async fn hinzufuegen(
     State(state): State<AppState>,
     Form(form): Form<ArtikelFormData>,
 ) -> Response {
-    let (ablaufdatum, fn_, fa) = validate_form(&form.name, &form.ablaufdatum);
+    let v = validate_form(&form);
 
-    if !fn_.is_empty() || !fa.is_empty() {
+    if v.hat_fehler() {
         let artikel = state.artikel.read().await;
         let heute = chrono::Local::now().date_naive();
         let zeilen = build_zeilen(&artikel, heute, "alle");
@@ -239,8 +257,9 @@ pub async fn hinzufuegen(
                 ablaufdatum: form.ablaufdatum,
                 menge: form.menge,
                 bemerkung: form.bemerkung,
-                fehler_name: fn_,
-                fehler_ablaufdatum: fa,
+                fehler_name: v.fehler_name,
+                fehler_ablaufdatum: v.fehler_ablaufdatum,
+                fehler_menge: v.fehler_menge,
             },
             fehler: String::new(),
         });
@@ -253,8 +272,8 @@ pub async fn hinzufuegen(
         name: form.name.trim().to_string(),
         // Kaufdatum wird nicht mehr im Formular erfasst: Einfügedatum verwenden.
         kaufdatum: Some(chrono::Local::now().date_naive()),
-        menge: if form.menge.trim().is_empty() { None } else { Some(form.menge.trim().to_string()) },
-        ablaufdatum: ablaufdatum.unwrap(),
+        menge: v.menge,
+        ablaufdatum: v.ablaufdatum.unwrap(),
         bemerkung: if form.bemerkung.trim().is_empty() { None } else { Some(form.bemerkung.trim().to_string()) },
     });
     artikel.sort_by_key(|a| a.ablaufdatum);
@@ -283,11 +302,12 @@ pub async fn zeige_modal(
     render(ModalTemplate {
         id: a.id,
         name: a.name.clone(),
-        menge: a.menge.clone().unwrap_or_default(),
+        menge: a.menge.map(|m| m.to_string()).unwrap_or_default(),
         ablaufdatum: format_date(a.ablaufdatum),
         bemerkung: a.bemerkung.clone().unwrap_or_default(),
         fehler_name: String::new(),
         fehler_ablaufdatum: String::new(),
+        fehler_menge: String::new(),
     })
 }
 
@@ -296,17 +316,18 @@ pub async fn bearbeiten(
     Path(id): Path<u64>,
     Form(form): Form<ArtikelFormData>,
 ) -> Response {
-    let (ablaufdatum, fn_, fa) = validate_form(&form.name, &form.ablaufdatum);
+    let v = validate_form(&form);
 
-    if !fn_.is_empty() || !fa.is_empty() {
+    if v.hat_fehler() {
         let mut response = render(ModalTemplate {
             id,
             name: form.name,
             menge: form.menge,
             ablaufdatum: form.ablaufdatum,
             bemerkung: form.bemerkung,
-            fehler_name: fn_,
-            fehler_ablaufdatum: fa,
+            fehler_name: v.fehler_name,
+            fehler_ablaufdatum: v.fehler_ablaufdatum,
+            fehler_menge: v.fehler_menge,
         });
         response.headers_mut().insert("HX-Retarget", "#modal-container".parse().unwrap());
         response.headers_mut().insert("HX-Reswap", "innerHTML".parse().unwrap());
@@ -317,8 +338,8 @@ pub async fn bearbeiten(
     if let Some(a) = artikel.iter_mut().find(|a| a.id == id) {
         a.name = form.name.trim().to_string();
         // a.kaufdatum bleibt bewusst unverändert (nicht im Formular editierbar).
-        a.menge = if form.menge.trim().is_empty() { None } else { Some(form.menge.trim().to_string()) };
-        a.ablaufdatum = ablaufdatum.unwrap();
+        a.menge = v.menge;
+        a.ablaufdatum = v.ablaufdatum.unwrap();
         a.bemerkung = if form.bemerkung.trim().is_empty() { None } else { Some(form.bemerkung.trim().to_string()) };
     }
     artikel.sort_by_key(|a| a.ablaufdatum);

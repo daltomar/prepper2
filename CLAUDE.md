@@ -69,7 +69,7 @@ pub struct Artikel {
     pub id: u64,                       // intern, nicht in CSV
     pub name: String,                  // Pflichtfeld
     pub kaufdatum: Option<NaiveDate>,  // automatisch = Einfügedatum, nicht in der UI
-    pub menge: Option<String>,         // optional, Freitext
+    pub menge: Option<u32>,            // optional, Stückzahl >= 1
     pub ablaufdatum: NaiveDate,        // Pflichtfeld
     pub bemerkung: Option<String>,     // optional
 }
@@ -77,8 +77,8 @@ pub struct Artikel {
 pub enum AblaufStatus { Abgelaufen, KritischBald, WarnungBald, Ok }
 ```
 
-`Artikel::status(heute)` und `parse_datum(s)` (akzeptiert `TT.MM.JJJJ` und `JJJJ-MM-TT`)
-sind in `artikel.rs` definiert und werden von beiden Binaries verwendet.
+`Artikel::status(heute)`, `parse_datum(s)` (akzeptiert `TT.MM.JJJJ` und `JJJJ-MM-TT`) und
+`parse_menge(s)` sind in `artikel.rs` definiert und werden von beiden Binaries verwendet.
 
 **CSV-Spaltenreihenfolge:**
 ```
@@ -86,6 +86,24 @@ name,kaufdatum,menge,ablaufdatum,bemerkung
 ```
 - Datumsformat in CSV: `YYYY-MM-DD`
 - `id` wird nicht gespeichert (beim Laden als Zeilenindex vergeben)
+
+**Menge:** optionale Stückzahl, ganze Zahl >= 1 (`Option<u32>`). Einheiten/Gewichte wie
+„500 g“ gehören in Name oder Bemerkung. `parse_menge` (in `artikel.rs`, genutzt von
+Formular-Validierung und CSV-Laden): leer → `None`; `"0"`/negativ → „Menge muss größer als
+0 sein.“; alles andere Nicht-Ganzzahlige (`"1,5"`, `"1.5"`, `"500 g"`) → „Menge muss eine
+ganze Zahl sein.“; größer als `u32::MAX` → „Menge ist zu groß.“ Die Prüfung erfolgt immer
+serverseitig (das `type="number"`-Feld im Browser ist nur Komfort).
+
+**Migration alter Menge-Werte (beim Laden):** Früher war Menge Freitext. Ein CSV-Wert, der
+keine gültige Stückzahl ist (z. B. `500 g`, `1,5 l`, `0`, `-3`), wird *nicht* verworfen:
+`menge` wird `None`, der alte Text wird als `Menge: <alter Wert>` an die Bemerkung angehängt
+(mit ` | ` getrennt, falls schon eine Bemerkung existiert), und pro Zeile erscheint eine
+Warnung auf stderr. Das Laden schlägt dadurch nicht fehl. In die Datei geschrieben wird die
+Migration erst beim nächsten Speichern (Hinzufügen/Bearbeiten/Löschen); bis dahin erscheinen
+die Warnungen bei jedem Start (auch im Checker, der ebenfalls `laden()` nutzt).
+
+> ⚠️ **Vor dem Deployment dieser Version `artikel.csv` sichern**, z. B.
+> `cp artikel.csv artikel.csv.bak-$(date +%F)`.
 
 **Kaufdatum:** bleibt in Modell und CSV erhalten (Format unverändert, leere Werte erlaubt),
 wird aber in der UI weder angezeigt noch bearbeitet. `hinzufuegen` setzt es automatisch auf
@@ -143,7 +161,8 @@ statt der vollständigen Seite.
     `false`). Solche Zeilen erhalten die CSS-Klasse `jahreswechsel` → `border-top: 3px solid #333`
     auf den Zellen (sichtbar über allen Statusfarben und beim Hover). Nur eine Linie, keine
     zusätzliche Jahres-Überschriftszeile.
-  - Formularfelder: Name *, Ablaufdatum *, Menge, Bemerkung (kein Kaufdatum).
+  - Formularfelder: Name *, Ablaufdatum *, Menge (`type="number" min="1" step="1"`, Fehler
+    `fehler_menge`), Bemerkung (kein Kaufdatum). Menge wird in der Tabelle rechtsbündig angezeigt.
 - **`partials/modal.html`**: Bearbeitungs-Overlay mit denselben Feldern wie das
   Hinzufügen-Formular (kein Kaufdatum). Wird via `hx-get="/artikel/:id/modal"`
   in `#modal-container` geladen. Fehler beim Speichern werden über `HX-Retarget` /

@@ -1,4 +1,4 @@
-use crate::artikel::Artikel;
+use crate::artikel::{parse_menge, Artikel};
 use chrono::NaiveDate;
 use std::path::PathBuf;
 
@@ -35,19 +35,34 @@ pub fn laden() -> Result<Vec<Artikel>, String> {
             .filter(|s| !s.is_empty())
             .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
 
-        let menge = record
-            .get(2)
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string());
-
         let ablaufdatum_str = record.get(3).unwrap_or("");
         let ablaufdatum = NaiveDate::parse_from_str(ablaufdatum_str, "%Y-%m-%d")
             .map_err(|_| format!("Zeile {}: ungültiges Ablaufdatum '{}'", idx + 2, ablaufdatum_str))?;
 
-        let bemerkung = record
+        let mut bemerkung = record
             .get(4)
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
+
+        // Menge war früher Freitext. Ungültige Altwerte (z. B. "500 g", "0") nicht
+        // verwerfen, sondern in die Bemerkung übernehmen; persistiert beim nächsten Speichern.
+        let menge_roh = record.get(2).unwrap_or("").trim();
+        let menge = match parse_menge(menge_roh) {
+            Ok(m) => m,
+            Err(_) => {
+                eprintln!(
+                    "Warnung: Zeile {}: Menge '{}' ist keine Stückzahl, wird nach Bemerkung verschoben",
+                    idx + 2,
+                    menge_roh
+                );
+                let alt = format!("Menge: {menge_roh}");
+                bemerkung = Some(match bemerkung {
+                    Some(b) => format!("{b} | {alt}"),
+                    None => alt,
+                });
+                None
+            }
+        };
 
         artikel.push(Artikel {
             id: idx as u64,
@@ -77,7 +92,7 @@ pub fn speichern(artikel: &[Artikel]) -> Result<(), String> {
                 .kaufdatum
                 .map(|d| d.format("%Y-%m-%d").to_string())
                 .unwrap_or_default();
-            let menge = a.menge.clone().unwrap_or_default();
+            let menge = a.menge.map(|m| m.to_string()).unwrap_or_default();
             let ablaufdatum = a.ablaufdatum.format("%Y-%m-%d").to_string();
             let bemerkung = a.bemerkung.clone().unwrap_or_default();
 
