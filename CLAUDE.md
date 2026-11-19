@@ -16,7 +16,7 @@ gespeichert. Die UI-Sprache ist **Deutsch**.
 | Sprache           | Rust (stable)                                                 |
 | HTTP-Framework    | **Axum 0.7** (async, Tokio-Runtime)                           |
 | HTML-Templates    | **Askama 0.12** (Compile-Time, Jinja2-Syntax)                 |
-| Frontend          | **HTMX 2** (CDN, kein Build-Schritt)                          |
+| Frontend          | **HTMX 2.0.4** (lokal eingebettet, kein CDN/Build-Schritt)    |
 | Auth              | HTTP Basic Auth (Passwort via `ABLAUFDATUM_PASSWORD`)         |
 | Datenpersistenz   | CSV-Datei (`artikel.csv`), Pfad via `ABLAUFDATUM_CSV`         |
 | Benachrichtigung  | `ablaufdatum-checker` Binary (systemd-Timer, SMTP via lettre) |
@@ -42,6 +42,9 @@ ablaufdatum-tracker/
 │   │   └── routes.rs      ← Axum-Handler, Template-Structs, Hilfstypen
 │   └── bin/
 │       └── checker.rs     ← Begleit-Binary für systemd-Timer
+├── static/
+│   ├── htmx-2.0.4.min.js  ← per include_str! eingebettet (kein CDN, offline-fähig)
+│   └── README.md          ← Herkunft, SRI-Prüfsumme, Update-Anleitung
 ├── templates/
 │   ├── index.html         ← Vollständige HTML-Seite (inkludiert Partial)
 │   └── partials/
@@ -136,6 +139,7 @@ CSS-Klassen: `status-ok`, `status-warnung`, `status-kritisch`, `status-abgelaufe
 | `GET`    | `/artikel/:id/modal`  | `zeige_modal`   | Edit-Modal-Partial laden             |
 | `PUT`    | `/artikel/:id`        | `bearbeiten`    | Artikel speichern                    |
 | `DELETE` | `/artikel/:id`        | `loeschen`      | Artikel löschen                      |
+| `GET`    | `/static/htmx-2.0.4.min.js` | `htmx_js` | HTMX (eingebettet, `immutable`)  |
 
 Alle schreibenden Operationen halten den `RwLock` nur während Mutation + CSV-Speicherung.
 HTMX-Anfragen (Header `HX-Request: true`) erhalten das `main_content.html`-Partial
@@ -145,7 +149,8 @@ statt der vollständigen Seite.
 
 ## Templates (`templates/`)
 
-- **`index.html`**: Vollständiger HTML-Rahmen inkl. `<style>` (inline-CSS) und HTMX-CDN-Script.
+- **`index.html`**: Vollständiger HTML-Rahmen inkl. `<style>` (inline-CSS) und HTMX-Script
+  (`/static/htmx-2.0.4.min.js` mit `integrity`-Attribut).
   Inkludiert `partials/main_content.html` via `{% include %}`.
 - **`partials/main_content.html`**: `<div id="main-content">` mit Filter-Buttons, Tabelle,
   Hinzufügen-Formular. Wird bei HTMX-Swaps direkt zurückgegeben.
@@ -192,6 +197,13 @@ statt der vollständigen Seite.
 
 Templates werden von Askama zur Build-Zeit kompiliert — keine Template-Dateien nötig
 zur Laufzeit.
+
+**HTMX** wird nicht vom CDN geladen, sondern liegt als `static/htmx-2.0.4.min.js` im Repo und
+wird per `include_str!` ins Binary eingebettet (die App funktioniert ohne Internetzugang).
+Ausgeliefert unter `/static/htmx-2.0.4.min.js` (hinter Basic Auth wie alle Routen) mit
+`Cache-Control: public, max-age=31536000, immutable`; die Version im Dateinamen sorgt bei
+einem Update für einen neuen URL. Das `integrity`-Attribut im `<script>`-Tag lässt den Browser
+die Datei verwerfen, falls sie verändert wurde. Herkunft/Prüfung: `static/README.md`.
 
 ---
 

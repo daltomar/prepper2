@@ -40,6 +40,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(routes::index))
+        .route("/static/htmx-2.0.4.min.js", get(routes::htmx_js))
         .route("/artikel", post(routes::hinzufuegen))
         .route("/artikel/:id/modal", get(routes::zeige_modal))
         .route("/artikel/:id", put(routes::bearbeiten).delete(routes::loeschen))

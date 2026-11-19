@@ -1,6 +1,6 @@
 use axum::{
     extract::{Form, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{Html, IntoResponse, Response},
 };
 use askama::Template;
@@ -208,6 +208,25 @@ pub struct ArtikelFormData {
     pub ablaufdatum: String,
     pub menge: String,
     pub bemerkung: String,
+}
+
+// ── Statische Dateien ──────────────────────────────────────────────────────────
+
+/// HTMX lokal statt vom CDN: die App funktioniert ohne Internet (LAN/Pi).
+/// Unveränderte Kopie, Prüfsumme siehe `static/README.md`.
+const HTMX_JS: &str = include_str!("../../static/htmx-2.0.4.min.js");
+
+/// `GET /static/htmx-2.0.4.min.js`. Die Version steht im Pfad, daher darf der Browser
+/// die Datei unbegrenzt cachen (`immutable`).
+pub async fn htmx_js() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+        ],
+        HTMX_JS,
+    )
+        .into_response()
 }
 
 // ── Handlers ───────────────────────────────────────────────────────────────────
