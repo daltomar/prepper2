@@ -1,6 +1,6 @@
 use crate::artikel::{parse_menge, Artikel};
 use chrono::NaiveDate;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn csv_pfad() -> Result<PathBuf, String> {
     if let Ok(p) = std::env::var("ABLAUFDATUM_CSV") {
@@ -22,11 +22,15 @@ pub const KOPFZEILE: [&str; 5] = ["name", "kaufdatum", "menge", "ablaufdatum", "
 /// Überspringen): Der Aufrufer darf in diesem Fall nicht mit einer leeren/unvollständigen
 /// Liste weiterarbeiten, sonst überschreibt das nächste `speichern()` die Datei.
 pub fn laden() -> Result<Vec<Artikel>, String> {
-    let pfad = csv_pfad()?;
+    laden_aus(&csv_pfad()?)
+}
+
+/// Wie [`laden`], aber mit explizitem Pfad (Web-Server und Tests).
+pub fn laden_aus(pfad: &Path) -> Result<Vec<Artikel>, String> {
     if !pfad.exists() {
         return Ok(Vec::new());
     }
-    let datei = std::fs::File::open(&pfad).map_err(|e| format!("{}: {e}", pfad.display()))?;
+    let datei = std::fs::File::open(pfad).map_err(|e| format!("{}: {e}", pfad.display()))?;
     lesen(datei).map_err(|e| format!("{}: {e}", pfad.display()))
 }
 
@@ -113,8 +117,9 @@ pub fn lesen<R: std::io::Read>(quelle: R) -> Result<Vec<Artikel>, String> {
     Ok(artikel)
 }
 
-pub fn speichern(artikel: &[Artikel]) -> Result<(), String> {
-    let pfad = csv_pfad()?;
+/// Schreibt atomar: erst `<name>.csv.tmp`, dann Umbenennen auf `pfad`. Bricht das Schreiben
+/// ab, bleibt die alte Datei unverändert.
+pub fn speichern(pfad: &Path, artikel: &[Artikel]) -> Result<(), String> {
     let tmp_pfad = pfad.with_extension("csv.tmp");
 
     {
@@ -139,7 +144,7 @@ pub fn speichern(artikel: &[Artikel]) -> Result<(), String> {
         writer.flush().map_err(|e| e.to_string())?;
     }
 
-    std::fs::rename(&tmp_pfad, &pfad).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp_pfad, pfad).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -207,6 +212,61 @@ mod tests {
     #[test]
     fn falsche_spaltenanzahl_ist_fehler() {
         assert!(lies(&format!("{KOPF}Reis,,,2027-06-10\n")).is_err());
+    }
+
+    fn artikel(name: &str, kauf: Option<NaiveDate>, menge: Option<u32>, ablauf: NaiveDate, bem: Option<&str>) -> Artikel {
+        Artikel { id: 0, name: name.into(), kaufdatum: kauf, menge, ablaufdatum: ablauf, bemerkung: bem.map(Into::into) }
+    }
+
+    #[test]
+    fn speichern_und_laden_rundreise() {
+        let dir = tempfile::tempdir().unwrap();
+        let pfad = dir.path().join("artikel.csv");
+        let d = |y, m, t| NaiveDate::from_ymd_opt(y, m, t).unwrap();
+        let liste = vec![
+            artikel("Reis, Basmati", Some(d(2026, 1, 2)), Some(3), d(2027, 6, 10), Some("Keller \"oben\"")),
+            artikel("Honig", None, None, d(2028, 5, 1), None),
+        ];
+        speichern(&pfad, &liste).unwrap();
+
+        // Kein Temp-Rest, Kopfzeile + Format wie erwartet
+        assert!(!dir.path().join("artikel.csv.tmp").exists());
+        let text = std::fs::read_to_string(&pfad).unwrap();
+        assert!(text.starts_with("name,kaufdatum,menge,ablaufdatum,bemerkung\n"), "{text}");
+        assert!(text.contains("\"Reis, Basmati\",2026-01-02,3,2027-06-10,"), "{text}");
+
+        let geladen = laden_aus(&pfad).unwrap();
+        assert_eq!(geladen.len(), 2);
+        assert_eq!(geladen[0].name, "Reis, Basmati");
+        assert_eq!(geladen[0].bemerkung.as_deref(), Some("Keller \"oben\""));
+        assert_eq!(geladen[0].kaufdatum, Some(d(2026, 1, 2)));
+        assert_eq!(geladen[0].menge, Some(3));
+        assert_eq!(geladen[1].kaufdatum, None);
+        assert_eq!(geladen[1].bemerkung, None);
+    }
+
+    #[test]
+    fn speichern_ersetzt_alte_datei() {
+        let dir = tempfile::tempdir().unwrap();
+        let pfad = dir.path().join("artikel.csv");
+        std::fs::write(&pfad, "alter Inhalt\n").unwrap();
+        speichern(&pfad, &[]).unwrap();
+        assert_eq!(std::fs::read_to_string(&pfad).unwrap(), "name,kaufdatum,menge,ablaufdatum,bemerkung\n");
+    }
+
+    #[test]
+    fn fehlende_datei_ist_leere_liste() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(laden_aus(&dir.path().join("gibt-es-nicht.csv")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn ladefehler_nennt_pfad() {
+        let dir = tempfile::tempdir().unwrap();
+        let pfad = dir.path().join("kaputt.csv");
+        std::fs::write(&pfad, format!("{KOPF}Reis,,,morgen,\n")).unwrap();
+        let e = laden_aus(&pfad).unwrap_err();
+        assert!(e.contains("kaputt.csv") && e.contains("Zeile 2"), "{e}");
     }
 
     #[test]

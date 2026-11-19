@@ -364,7 +364,7 @@ pub async fn hinzufuegen(
     });
     artikel.sort_by_key(|a| a.ablaufdatum);
 
-    let fehler = speichern(&artikel).err().unwrap_or_default();
+    let fehler = speichern(&state.csv_pfad, &artikel).err().unwrap_or_default();
     let heute = chrono::Local::now().date_naive();
     let zeilen = build_zeilen(&artikel, heute, filter);
     let hinweis = artikel
@@ -437,7 +437,7 @@ pub async fn bearbeiten(
     }
     artikel.sort_by_key(|a| a.ablaufdatum);
 
-    let fehler = speichern(&artikel).err().unwrap_or_default();
+    let fehler = speichern(&state.csv_pfad, &artikel).err().unwrap_or_default();
     let heute = chrono::Local::now().date_naive();
     // Fällt der Artikel durch die Änderung aus dem Filter, verschwindet die Zeile: Hinweis zeigen.
     let hinweis = artikel
@@ -458,7 +458,7 @@ pub async fn loeschen(
     let mut artikel = state.artikel.write().await;
     artikel.retain(|a| a.id != id);
 
-    let fehler = speichern(&artikel).err().unwrap_or_default();
+    let fehler = speichern(&state.csv_pfad, &artikel).err().unwrap_or_default();
     let heute = chrono::Local::now().date_naive();
     main_with_oob_modal_clear(&artikel, heute, filter, FormularState::default(), fehler, String::new())
 }

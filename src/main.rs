@@ -1,16 +1,8 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use axum::{
-    extract::{Request, State},
-    http::{header, HeaderMap, StatusCode},
-    middleware::{self, Next},
-    response::{IntoResponse, Response},
-    routing::{get, post, put},
-    Router,
-};
 use ablaufdatum_tracker::{
-    csv_io::laden,
-    web::{routes, AppState},
+    csv_io::{csv_pfad, laden_aus},
+    web::{router, AppState},
 };
 
 #[tokio::main]
@@ -20,10 +12,15 @@ async fn main() {
         std::process::exit(2);
     });
 
+    let csv_pfad = csv_pfad().unwrap_or_else(|e| {
+        eprintln!("Fehler: Pfad der Artikel-CSV nicht bestimmbar: {e}");
+        std::process::exit(2);
+    });
+
     // Nicht mit leerer Liste weitermachen: das nächste Speichern würde die Datei überschreiben.
     // Exit-Code 2 = Daten-/Konfigurationsfehler; systemd startet dann nicht neu
     // (RestartPreventExitStatus=2 in den Service-Units).
-    let artikel = laden().unwrap_or_else(|e| {
+    let artikel = laden_aus(&csv_pfad).unwrap_or_else(|e| {
         eprintln!("Fehler: Artikel-CSV konnte nicht geladen werden: {e}");
         eprintln!(
             "Der Server startet nicht, damit die Datei nicht überschrieben wird. \
@@ -36,16 +33,9 @@ async fn main() {
     let state = AppState {
         artikel: Arc::new(RwLock::new(artikel)),
         password,
+        csv_pfad,
     };
-
-    let app = Router::new()
-        .route("/", get(routes::index))
-        .route("/static/htmx-2.0.4.min.js", get(routes::htmx_js))
-        .route("/artikel", post(routes::hinzufuegen))
-        .route("/artikel/:id/modal", get(routes::zeige_modal))
-        .route("/artikel/:id", put(routes::bearbeiten).delete(routes::loeschen))
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
-        .with_state(state);
+    let app = router(state);
 
     let addr = std::env::var("ABLAUFDATUM_ADDR")
         .unwrap_or_else(|_| "127.0.0.1:8085".to_string());
@@ -55,46 +45,4 @@ async fn main() {
     });
     println!("Ablaufdatum-Tracker läuft auf http://{addr}");
     axum::serve(listener, app).await.unwrap();
-}
-
-async fn auth_middleware(
-    State(state): State<AppState>,
-    request: Request,
-    next: Next,
-) -> Response {
-    if check_basic_auth(request.headers(), &state.password) {
-        next.run(request).await
-    } else {
-        (
-            StatusCode::UNAUTHORIZED,
-            [(
-                header::WWW_AUTHENTICATE,
-                r#"Basic realm="Ablaufdatum-Tracker", charset="UTF-8""#,
-            )],
-            "Nicht autorisiert",
-        )
-            .into_response()
-    }
-}
-
-fn check_basic_auth(headers: &HeaderMap, expected_password: &str) -> bool {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
-    let Some(auth) = headers.get(header::AUTHORIZATION) else {
-        return false;
-    };
-    let Ok(auth_str) = auth.to_str() else {
-        return false;
-    };
-    let Some(encoded) = auth_str.strip_prefix("Basic ") else {
-        return false;
-    };
-    let Ok(decoded) = STANDARD.decode(encoded.trim()) else {
-        return false;
-    };
-    let Ok(creds) = std::str::from_utf8(&decoded) else {
-        return false;
-    };
-    // Accept "anyuser:password" — the username is ignored
-    let pw = creds.split_once(':').map_or(creds, |x| x.1);
-    pw == expected_password
 }

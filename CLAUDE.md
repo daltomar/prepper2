@@ -34,17 +34,19 @@ ablaufdatum-tracker/
 ├── install.sh             ← Desktop-Installation (user-level systemd)
 ├── src/
 │   ├── lib.rs             ← pub mod artikel, csv_io, web
-│   ├── main.rs            ← Axum-Server-Einstiegspunkt
+│   ├── main.rs            ← Einstiegspunkt: Env lesen, CSV laden, router() starten
 │   ├── artikel.rs         ← Datenmodell: Artikel, AblaufStatus, parse_datum
 │   ├── csv_io.rs          ← CSV laden/speichern, Pfad via ABLAUFDATUM_CSV
 │   ├── web/
-│   │   ├── mod.rs         ← AppState (Arc<RwLock<Vec<Artikel>>>, password)
+│   │   ├── mod.rs         ← AppState, router() inkl. Basic-Auth-Middleware
 │   │   └── routes.rs      ← Axum-Handler, Template-Structs, Hilfstypen
 │   └── bin/
 │       └── checker.rs     ← Begleit-Binary für systemd-Timer
 ├── static/
 │   ├── htmx-2.0.4.min.js  ← per include_str! eingebettet (kein CDN, offline-fähig)
 │   └── README.md          ← Herkunft, SRI-Prüfsumme, Update-Anleitung
+├── tests/
+│   └── web.rs             ← Handler-Tests (Router ohne Server, eigene Temp-CSV je Test)
 ├── templates/
 │   ├── index.html         ← Vollständige HTML-Seite (inkludiert Partial)
 │   └── partials/
@@ -251,7 +253,10 @@ die Datei verwerfen, falls sie verändert wurde. Herkunft/Prüfung: `static/READ
   Die Service-Units setzen `RestartPreventExitStatus=2`, d. h. systemd startet nicht endlos neu.
   Der Dienst bleibt `failed`, und die Ursache steht im Journal. Exit-Code 2 gilt auch bei
   fehlendem `ABLAUFDATUM_PASSWORD`. Der Checker bricht bei Ladefehlern ebenfalls ab (Exit 1, Log).
-- `speichern()`: atomisches Schreiben via `.csv.tmp` → umbenennen
+- `laden_aus(pfad)`: wie `laden()`, mit explizitem Pfad (Web-Server und Tests). `laden()`
+  (Pfad aus `csv_pfad()`) nutzt der Checker.
+- `speichern(pfad, artikel)`: atomisches Schreiben via `.csv.tmp` → umbenennen. Der Web-Server
+  übergibt `AppState::csv_pfad` (beim Start einmal per `csv_pfad()` bestimmt).
 
 ---
 
@@ -311,6 +316,26 @@ ABLAUFDATUM_CONFIG=/tmp/cfg.toml \
 ABLAUFDATUM_LOG=/tmp/checker.log \
 cargo run --bin ablaufdatum-checker
 ```
+
+---
+
+## Tests
+
+```bash
+cargo test
+```
+
+- **Unit-Tests** in den Modulen: `artikel.rs` (Status-Grenzen, `parse_datum`, `parse_menge`),
+  `csv_io.rs` (Parser-Fehler mit Zeilennummer, Menge-Migration, Speichern/Laden-Rundreise,
+  atomisches Ersetzen, fehlende Datei), `web/routes.rs` (Filter, Hinweis, ISO-Datum),
+  `bin/checker.rs` (Log-Zusammenfassung, config.toml-Fehler, E-Mail-Text, Adresslisten).
+- **Handler-Tests** in `tests/web.rs`: der komplette `router()` inkl. Basic Auth per
+  `tower::ServiceExt::oneshot`, ohne echten Server. Jeder Test hat seine eigene CSV im
+  Temp-Verzeichnis (`AppState::csv_pfad`), daher keine globalen Env-Variablen und parallel
+  lauffähig. Abgedeckt: 401/200, Seite vs. HTMX-Partial, Sortierung/Farbklassen, Filter,
+  Hinzufügen/Bearbeiten/Löschen inkl. CSV-Inhalt, Validierungsfehler (CSV unverändert,
+  `HX-Retarget`), fehlende Formularfelder (kein 422), statische HTMX-Datei.
+- Dev-Dependencies: `tower` (`util`), `tempfile`.
 
 ---
 
