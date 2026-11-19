@@ -13,7 +13,7 @@
         </div>
         <label>Ablaufdatum *</label>
         <div>
-          <input type="text" name="ablaufdatum" value="{{ ablaufdatum }}" placeholder="TT.MM.JJJJ" class="input-datum">
+          <input type="date" name="ablaufdatum" value="{{ ablaufdatum }}" max="9999-12-31" placeholder="TT.MM.JJJJ" class="input-datum">
           {% if !fehler_ablaufdatum.is_empty() %}<span class="field-error">{{ fehler_ablaufdatum }}</span>{% endif %}
         </div>
         <label>Menge</label>

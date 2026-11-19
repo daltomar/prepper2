@@ -86,6 +86,17 @@ fn format_date(d: chrono::NaiveDate) -> String {
     format!("{:02}.{:02}.{}", d.day(), d.month(), d.year())
 }
 
+/// Wert für `<input type="date">`: der Browser erwartet immer `JJJJ-MM-TT` (unabhängig von
+/// der angezeigten Sprache/Formatierung). Gültige Eingaben (auch `TT.MM.JJJJ`) werden
+/// umgewandelt; Ungültiges bleibt unverändert (der Browser zeigt es dann leer an, die
+/// Fehlermeldung daneben erklärt warum).
+fn datum_fuer_input(s: &str) -> String {
+    match parse_datum(s) {
+        Some(d) => d.format("%Y-%m-%d").to_string(),
+        None => s.to_string(),
+    }
+}
+
 fn status_class(s: &AblaufStatus) -> &'static str {
     match s {
         AblaufStatus::Abgelaufen   => "status-abgelaufen",
@@ -325,7 +336,7 @@ pub async fn hinzufuegen(
             filter: filter.to_string(),
             form: FormularState {
                 name: form.name,
-                ablaufdatum: form.ablaufdatum,
+                ablaufdatum: datum_fuer_input(&form.ablaufdatum),
                 menge: form.menge,
                 bemerkung: form.bemerkung,
                 fehler_name: v.fehler_name,
@@ -381,7 +392,7 @@ pub async fn zeige_modal(
         id: a.id,
         name: a.name.clone(),
         menge: a.menge.map(|m| m.to_string()).unwrap_or_default(),
-        ablaufdatum: format_date(a.ablaufdatum),
+        ablaufdatum: a.ablaufdatum.format("%Y-%m-%d").to_string(),
         bemerkung: a.bemerkung.clone().unwrap_or_default(),
         fehler_name: String::new(),
         fehler_ablaufdatum: String::new(),
@@ -402,7 +413,7 @@ pub async fn bearbeiten(
             id,
             name: form.name,
             menge: form.menge,
-            ablaufdatum: form.ablaufdatum,
+            ablaufdatum: datum_fuer_input(&form.ablaufdatum),
             bemerkung: form.bemerkung,
             fehler_name: v.fehler_name,
             fehler_ablaufdatum: v.fehler_ablaufdatum,
@@ -456,6 +467,15 @@ mod tests_filter {
 
     fn artikel(name: &str, ablauf: NaiveDate) -> Artikel {
         Artikel { id: 1, name: name.into(), kaufdatum: None, menge: None, ablaufdatum: ablauf, bemerkung: None }
+    }
+
+    #[test]
+    fn datum_fuer_date_input_ist_iso() {
+        assert_eq!(datum_fuer_input("2027-06-10"), "2027-06-10");
+        assert_eq!(datum_fuer_input("10.06.2027"), "2027-06-10");
+        assert_eq!(datum_fuer_input(" 1.2.2028 "), "2028-02-01");
+        assert_eq!(datum_fuer_input("31.02.2027"), "31.02.2027");
+        assert_eq!(datum_fuer_input(""), "");
     }
 
     #[test]
