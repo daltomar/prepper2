@@ -16,7 +16,10 @@
           {% if !fehler_ablaufdatum.is_empty() %}<span class="field-error">{{ fehler_ablaufdatum }}</span>{% endif %}
         </div>
         <label>Menge</label>
-        <div><input type="text" name="menge" value="{{ menge }}" class="input-menge"></div>
+        <div>
+          <input type="number" min="1" step="1" inputmode="numeric" name="menge" value="{{ menge }}" placeholder="z. B. 2" class="input-menge">
+          {% if !fehler_menge.is_empty() %}<span class="field-error">{{ fehler_menge }}</span>{% endif %}
+        </div>
         <label>Bemerkung</label>
         <div><input type="text" name="bemerkung" value="{{ bemerkung }}" class="input-bemerkung"></div>
       </div>
