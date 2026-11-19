@@ -12,6 +12,8 @@ Environment=ABLAUFDATUM_CSV=/var/lib/ablaufdatum/artikel.csv
 StateDirectory=ablaufdatum
 Restart=on-failure
 RestartSec=5
+# Exit-Code 2 = CSV nicht lesbar / Passwort fehlt: Neustart hilft nicht, Dienst bleibt "failed".
+RestartPreventExitStatus=2
 
 # Hardening
 NoNewPrivileges=yes
