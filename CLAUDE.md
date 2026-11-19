@@ -261,9 +261,17 @@ Ablauf bei Ausführung:
 1. CSV laden, Artikel mit `KritischBald` oder `Abgelaufen` filtern
 2. Wenn keine → Exit 0 (kein Output)
 3. `notify-send` nur aufrufen wenn `DISPLAY` oder `WAYLAND_DISPLAY` gesetzt (headless-sicher)
-4. `config.toml` laden (Pfad: `ABLAUFDATUM_CONFIG` oder `~/.config/…`)
+4. `config.toml` laden (Pfad: `ABLAUFDATUM_CONFIG` oder `~/.config/…`). Fehlt die Datei → keine
+   E-Mail (kein Fehler). Ist sie vorhanden, aber unlesbar/ungültig (Syntaxfehler, fehlendes
+   Feld) → `FEHLER Konfiguration: <pfad>: Zeile N: …` im Log, E-Mail gilt als fehlgeschlagen.
 5. Wenn `[email]`-Sektion vorhanden: E-Mail via SMTP senden
-6. In `checker.log` schreiben (Pfad: `ABLAUFDATUM_LOG` oder `~/.local/share/…`)
+6. In `checker.log` schreiben (Pfad: `ABLAUFDATUM_LOG` oder `~/.local/share/…`; letzte 50
+   Einträge, jeder Eintrag einzeilig). Die Abschlusszeile (`zusammenfassung()`) nennt pro Kanal,
+   was wirklich passiert ist, z. B.
+   `OK: 2 kritische Artikel; keine Desktop-Benachrichtigung (kein Display); E-Mail gesendet` oder
+   `WARNUNG: 2 kritische Artikel; …; keine E-Mail (nicht konfiguriert) – niemand wurde benachrichtigt`.
+   `OK` nur, wenn mindestens ein Kanal gesendet hat und keiner fehlgeschlagen ist. Der Exit-Code
+   bleibt 0 (nur Ladefehler der CSV → Exit 1).
 
 ---
 

@@ -58,6 +58,7 @@ fn run() -> Result<(), String> {
 
     let has_display = std::env::var("DISPLAY").is_ok()
         || std::env::var("WAYLAND_DISPLAY").is_ok();
+    let mut desktop = Versand::Uebersprungen;
     if has_display {
         let notify_result = std::process::Command::new("notify-send")
             .arg("--urgency=normal")
@@ -68,34 +69,71 @@ fn run() -> Result<(), String> {
                 anzahl
             ))
             .status();
-        match notify_result {
-            Ok(status) if !status.success() => {
+        desktop = match notify_result {
+            Ok(status) if status.success() => Versand::Gesendet,
+            Ok(_) => {
                 log_schreiben("WARNUNG: notify-send schlug fehl");
+                Versand::Fehler
             }
             Err(e) => {
                 log_schreiben(&format!("WARNUNG: notify-send nicht gefunden: {}", e));
+                Versand::Fehler
             }
-            _ => {}
-        }
+        };
     }
 
-    let config = config_laden();
-
-    if let Some(cfg) = config {
-        if let Some(email_cfg) = cfg.email {
+    let email = match config_laden() {
+        Ok(Some(Config { email: Some(email_cfg) })) => {
             let body = email_body_erstellen(&kritisch, heute);
             match email_senden(&email_cfg, anzahl, &body) {
-                Ok(()) => log_schreiben("OK: E-Mail gesendet"),
-                Err(e) => log_schreiben(&format!("FEHLER E-Mail: {}", e)),
+                Ok(()) => Versand::Gesendet,
+                Err(e) => {
+                    log_schreiben(&format!("FEHLER E-Mail: {}", e));
+                    Versand::Fehler
+                }
             }
         }
-    }
+        Ok(_) => Versand::Uebersprungen,
+        Err(e) => {
+            // Eine vorhandene, aber kaputte config.toml soll nicht still ignoriert werden:
+            // sonst fehlt die E-Mail, ohne dass es irgendwo steht.
+            log_schreiben(&format!("FEHLER Konfiguration: {}", e));
+            Versand::Fehler
+        }
+    };
 
-    log_schreiben(&format!(
-        "OK: {} kritische Artikel, Benachrichtigung gesendet",
-        anzahl
-    ));
+    log_schreiben(&zusammenfassung(anzahl, desktop, email));
     Ok(())
+}
+
+/// Ergebnis eines Benachrichtigungskanals.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Versand {
+    Gesendet,
+    Fehler,
+    /// Nicht versucht: kein Display bzw. keine `[email]`-Konfiguration.
+    Uebersprungen,
+}
+
+/// Abschlusszeile fürs Log. Sagt, was wirklich passiert ist (früher stand dort immer
+/// „Benachrichtigung gesendet“, auch wenn headless ohne E-Mail-Konfiguration nichts rausging).
+/// `OK` nur, wenn mindestens ein Kanal gesendet hat und keiner fehlgeschlagen ist.
+fn zusammenfassung(anzahl: usize, desktop: Versand, email: Versand) -> String {
+    let desktop_text = match desktop {
+        Versand::Gesendet => "Desktop-Benachrichtigung gesendet",
+        Versand::Fehler => "Desktop-Benachrichtigung fehlgeschlagen",
+        Versand::Uebersprungen => "keine Desktop-Benachrichtigung (kein Display)",
+    };
+    let email_text = match email {
+        Versand::Gesendet => "E-Mail gesendet",
+        Versand::Fehler => "E-Mail fehlgeschlagen",
+        Versand::Uebersprungen => "keine E-Mail (nicht konfiguriert)",
+    };
+    let irgendwas_gesendet = desktop == Versand::Gesendet || email == Versand::Gesendet;
+    let fehler = desktop == Versand::Fehler || email == Versand::Fehler;
+    let stufe = if irgendwas_gesendet && !fehler { "OK" } else { "WARNUNG" };
+    let hinweis = if irgendwas_gesendet { "" } else { " – niemand wurde benachrichtigt" };
+    format!("{stufe}: {anzahl} kritische Artikel; {desktop_text}; {email_text}{hinweis}")
 }
 
 fn config_pfad() -> Option<PathBuf> {
@@ -109,19 +147,38 @@ fn config_pfad() -> Option<PathBuf> {
     )
 }
 
-fn config_laden() -> Option<Config> {
+/// `Ok(None)`: keine config.toml vorhanden (kein Fehler, E-Mail ist optional).
+/// `Err`: Datei vorhanden, aber nicht lesbar oder kein gültiges TOML.
+fn config_laden() -> Result<Option<Config>, String> {
     let custom = std::env::var("ABLAUFDATUM_CONFIG").ok();
-    let pfad = config_pfad()?;
+    let Some(pfad) = config_pfad() else {
+        return Ok(None);
+    };
     if !pfad.exists() {
         // Only try to write the example template when using the default user path,
         // not when an explicit path was provided (e.g. by a system service).
         if custom.is_none() {
             beispiel_config_erstellen();
         }
-        return None;
+        return Ok(None);
     }
-    let inhalt = std::fs::read_to_string(&pfad).ok()?;
-    toml::from_str(&inhalt).ok()
+    let inhalt = std::fs::read_to_string(&pfad)
+        .map_err(|e| format!("{}: {}", pfad.display(), e))?;
+    config_parsen(&inhalt).map_err(|e| format!("{}: {}", pfad.display(), e))
+}
+
+fn config_parsen(inhalt: &str) -> Result<Option<Config>, String> {
+    toml::from_str(inhalt).map(Some).map_err(|e| {
+        // Die Standard-Meldung von toml ist mehrzeilig (mit Code-Ausschnitt); fürs Log kürzen.
+        let zeile = e
+            .span()
+            .map(|r| inhalt[..r.start.min(inhalt.len())].matches('\n').count() + 1);
+        let text = e.message().split_whitespace().collect::<Vec<_>>().join(" ");
+        match zeile {
+            Some(z) => format!("Zeile {z}: {text}"),
+            None => text,
+        }
+    })
 }
 
 fn beispiel_config_erstellen() {
@@ -275,7 +332,9 @@ fn log_schreiben(nachricht: &str) {
         .collect();
 
     let jetzt = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    zeilen.push(format!("[{}] {}", jetzt, nachricht));
+    // Ein Eintrag = eine Zeile (das Log wird zeilenweise auf 50 Einträge gekürzt).
+    let einzeilig = nachricht.split_whitespace().collect::<Vec<_>>().join(" ");
+    zeilen.push(format!("[{}] {}", jetzt, einzeilig));
 
     let start = zeilen.len().saturating_sub(50);
     let _ = std::fs::write(&pfad, zeilen[start..].join("\n") + "\n");
@@ -284,6 +343,65 @@ fn log_schreiben(nachricht: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zusammenfassung_headless_ohne_email_sagt_nicht_gesendet() {
+        let z = zusammenfassung(3, Versand::Uebersprungen, Versand::Uebersprungen);
+        assert!(z.starts_with("WARNUNG: 3 kritische Artikel"), "{z}");
+        assert!(z.contains("niemand wurde benachrichtigt"), "{z}");
+        assert!(!z.contains(" gesendet;") && !z.ends_with(" gesendet"), "{z}");
+    }
+
+    #[test]
+    fn zusammenfassung_email_gesendet_ist_ok() {
+        let z = zusammenfassung(2, Versand::Uebersprungen, Versand::Gesendet);
+        assert_eq!(
+            z,
+            "OK: 2 kritische Artikel; keine Desktop-Benachrichtigung (kein Display); E-Mail gesendet"
+        );
+    }
+
+    #[test]
+    fn zusammenfassung_teilfehler_ist_warnung() {
+        let z = zusammenfassung(1, Versand::Gesendet, Versand::Fehler);
+        assert!(z.starts_with("WARNUNG:") && z.contains("E-Mail fehlgeschlagen"), "{z}");
+        assert!(!z.contains("niemand"), "{z}");
+    }
+
+    #[test]
+    fn config_ohne_email_sektion_und_kaputte_config() {
+        assert!(config_parsen("").unwrap().unwrap().email.is_none());
+        let ok = config_parsen(
+            "[email]\nsmtp_server = \"s\"\nsmtp_port = 587\nusername = \"u\"\n\
+             password = \"p\"\nfrom = \"a@b.de\"\nto = \"c@d.de\"\n",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(ok.email.unwrap().smtp_port, 587);
+        // Tippfehler / fehlendes Feld → Fehler statt stillem Ignorieren
+        assert!(config_parsen("[email]\nsmtp_server = \"s\"\n").is_err());
+        let e = config_parsen("# Kommentar\n[email\n").err().expect("Fehler erwartet");
+        assert!(e.starts_with("Zeile 2:") && !e.contains('\n'), "{e}");
+    }
+
+    #[test]
+    fn email_body_tage_und_abschnitte() {
+        let heute = NaiveDate::from_ymd_opt(2026, 11, 19).unwrap();
+        let a = |name: &str, d: NaiveDate| Artikel {
+            id: 0, name: name.into(), kaufdatum: None, menge: None, ablaufdatum: d, bemerkung: None,
+        };
+        let liste = vec![
+            a("Milch", NaiveDate::from_ymd_opt(2026, 11, 18).unwrap()),
+            a("Brot", NaiveDate::from_ymd_opt(2026, 11, 9).unwrap()),
+            a("Reis", NaiveDate::from_ymd_opt(2026, 11, 20).unwrap()),
+        ];
+        let body = email_body_erstellen(&liste, heute);
+        assert!(body.contains("ABGELAUFEN:"), "{body}");
+        assert!(body.contains("Milch (abgelaufen seit 1 Tag, 18.11.2026)"), "{body}");
+        assert!(body.contains("Brot (abgelaufen seit 10 Tagen, 09.11.2026)"), "{body}");
+        assert!(body.contains("BALD ABLAUFEND"), "{body}");
+        assert!(body.contains("Reis (noch 1 Tag, 20.11.2026)"), "{body}");
+    }
 
     #[test]
     fn to_feld_akzeptiert_mehrere_adressen() {
