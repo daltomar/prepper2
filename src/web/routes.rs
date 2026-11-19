@@ -17,11 +17,9 @@ use crate::{
 pub struct ArtikelZeile {
     pub id: u64,
     pub name: String,
-    pub kaufdatum: String,
+    pub tage_bis_ablauf: i64,
     pub menge: String,
     pub ablaufdatum: String,
-    pub kaufdatum_eingabe: String,
-    pub ablaufdatum_eingabe: String,
     pub bemerkung: String,
     pub status_class: String,
 }
@@ -30,12 +28,10 @@ pub struct ArtikelZeile {
 pub struct FormularState {
     pub name: String,
     pub ablaufdatum: String,
-    pub kaufdatum: String,
     pub menge: String,
     pub bemerkung: String,
     pub fehler_name: String,
     pub fehler_ablaufdatum: String,
-    pub fehler_kaufdatum: String,
 }
 
 // ── Templates ──────────────────────────────────────────────────────────────────
@@ -63,13 +59,11 @@ struct MainContentTemplate {
 struct ModalTemplate {
     id: u64,
     name: String,
-    kaufdatum: String,
     menge: String,
     ablaufdatum: String,
     bemerkung: String,
     fehler_name: String,
     fehler_ablaufdatum: String,
-    fehler_kaufdatum: String,
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -110,11 +104,9 @@ fn build_zeilen(artikel: &[Artikel], heute: chrono::NaiveDate, filter: &str) -> 
             ArtikelZeile {
                 id: a.id,
                 name: a.name.clone(),
-                kaufdatum: a.kaufdatum.map(format_date).unwrap_or_default(),
+                tage_bis_ablauf: (a.ablaufdatum - heute).num_days(),
                 menge: a.menge.clone().unwrap_or_default(),
                 ablaufdatum: format_date(a.ablaufdatum),
-                kaufdatum_eingabe: a.kaufdatum.map(format_date).unwrap_or_default(),
-                ablaufdatum_eingabe: format_date(a.ablaufdatum),
                 bemerkung: a.bemerkung.clone().unwrap_or_default(),
                 status_class: status_class(&status).to_string(),
             }
@@ -147,11 +139,9 @@ fn main_with_oob_modal_clear(
 fn validate_form(
     name: &str,
     ablaufdatum_str: &str,
-    kaufdatum_str: &str,
-) -> (Option<chrono::NaiveDate>, Option<chrono::NaiveDate>, String, String, String) {
+) -> (Option<chrono::NaiveDate>, String, String) {
     let mut fehler_name = String::new();
     let mut fehler_ablaufdatum = String::new();
-    let mut fehler_kaufdatum = String::new();
 
     if name.trim().is_empty() {
         fehler_name = "Name darf nicht leer sein.".to_string();
@@ -168,17 +158,7 @@ fn validate_form(
         d
     };
 
-    let kaufdatum = if kaufdatum_str.trim().is_empty() {
-        None
-    } else {
-        let d = parse_datum(kaufdatum_str);
-        if d.is_none() {
-            fehler_kaufdatum = "Ungültiges Datum (TT.MM.JJJJ).".to_string();
-        }
-        d
-    };
-
-    (ablaufdatum, kaufdatum, fehler_name, fehler_ablaufdatum, fehler_kaufdatum)
+    (ablaufdatum, fehler_name, fehler_ablaufdatum)
 }
 
 // ── Query/Form types ───────────────────────────────────────────────────────────
@@ -192,7 +172,6 @@ pub struct FilterParams {
 pub struct ArtikelFormData {
     pub name: String,
     pub ablaufdatum: String,
-    pub kaufdatum: String,
     pub menge: String,
     pub bemerkung: String,
 }
@@ -230,10 +209,9 @@ pub async fn hinzufuegen(
     State(state): State<AppState>,
     Form(form): Form<ArtikelFormData>,
 ) -> Response {
-    let (ablaufdatum, kaufdatum, fn_, fa, fk) =
-        validate_form(&form.name, &form.ablaufdatum, &form.kaufdatum);
+    let (ablaufdatum, fn_, fa) = validate_form(&form.name, &form.ablaufdatum);
 
-    if !fn_.is_empty() || !fa.is_empty() || !fk.is_empty() {
+    if !fn_.is_empty() || !fa.is_empty() {
         let artikel = state.artikel.read().await;
         let heute = chrono::Local::now().date_naive();
         let zeilen = build_zeilen(&artikel, heute, "alle");
@@ -243,12 +221,10 @@ pub async fn hinzufuegen(
             form: FormularState {
                 name: form.name,
                 ablaufdatum: form.ablaufdatum,
-                kaufdatum: form.kaufdatum,
                 menge: form.menge,
                 bemerkung: form.bemerkung,
                 fehler_name: fn_,
                 fehler_ablaufdatum: fa,
-                fehler_kaufdatum: fk,
             },
             fehler: String::new(),
         });
@@ -259,7 +235,8 @@ pub async fn hinzufuegen(
     artikel.push(Artikel {
         id: new_id,
         name: form.name.trim().to_string(),
-        kaufdatum,
+        // Kaufdatum wird nicht mehr im Formular erfasst: Einfügedatum verwenden.
+        kaufdatum: Some(chrono::Local::now().date_naive()),
         menge: if form.menge.trim().is_empty() { None } else { Some(form.menge.trim().to_string()) },
         ablaufdatum: ablaufdatum.unwrap(),
         bemerkung: if form.bemerkung.trim().is_empty() { None } else { Some(form.bemerkung.trim().to_string()) },
@@ -290,13 +267,11 @@ pub async fn zeige_modal(
     render(ModalTemplate {
         id: a.id,
         name: a.name.clone(),
-        kaufdatum: a.kaufdatum.map(format_date).unwrap_or_default(),
         menge: a.menge.clone().unwrap_or_default(),
         ablaufdatum: format_date(a.ablaufdatum),
         bemerkung: a.bemerkung.clone().unwrap_or_default(),
         fehler_name: String::new(),
         fehler_ablaufdatum: String::new(),
-        fehler_kaufdatum: String::new(),
     })
 }
 
@@ -305,20 +280,17 @@ pub async fn bearbeiten(
     Path(id): Path<u64>,
     Form(form): Form<ArtikelFormData>,
 ) -> Response {
-    let (ablaufdatum, kaufdatum, fn_, fa, fk) =
-        validate_form(&form.name, &form.ablaufdatum, &form.kaufdatum);
+    let (ablaufdatum, fn_, fa) = validate_form(&form.name, &form.ablaufdatum);
 
-    if !fn_.is_empty() || !fa.is_empty() || !fk.is_empty() {
+    if !fn_.is_empty() || !fa.is_empty() {
         let mut response = render(ModalTemplate {
             id,
             name: form.name,
-            kaufdatum: form.kaufdatum,
             menge: form.menge,
             ablaufdatum: form.ablaufdatum,
             bemerkung: form.bemerkung,
             fehler_name: fn_,
             fehler_ablaufdatum: fa,
-            fehler_kaufdatum: fk,
         });
         response.headers_mut().insert("HX-Retarget", "#modal-container".parse().unwrap());
         response.headers_mut().insert("HX-Reswap", "innerHTML".parse().unwrap());
@@ -328,7 +300,7 @@ pub async fn bearbeiten(
     let mut artikel = state.artikel.write().await;
     if let Some(a) = artikel.iter_mut().find(|a| a.id == id) {
         a.name = form.name.trim().to_string();
-        a.kaufdatum = kaufdatum;
+        // a.kaufdatum bleibt bewusst unverändert (nicht im Formular editierbar).
         a.menge = if form.menge.trim().is_empty() { None } else { Some(form.menge.trim().to_string()) };
         a.ablaufdatum = ablaufdatum.unwrap();
         a.bemerkung = if form.bemerkung.trim().is_empty() { None } else { Some(form.bemerkung.trim().to_string()) };
