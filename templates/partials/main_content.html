@@ -1,5 +1,9 @@
 <div id="main-content">
 {% if !fehler.is_empty() %}<div class="error-banner">{{ fehler }}</div>{% endif %}
+{% if !hinweis.is_empty() %}<div class="info-banner">{{ hinweis }}</div>{% endif %}
+<!-- Aktiver Filter: wird vom Hinzufügen-Formular mitgeschickt und per hx-include vom
+     Bearbeiten-Modal (Speichern/Löschen), damit die Antwort gefiltert bleibt. -->
+<input type="hidden" id="aktiver-filter" name="filter" value="{{ filter }}">
 
 <div class="filter-bar">
   <span>Filter:</span>
@@ -60,6 +64,7 @@
 <section class="formular">
   <h2>Neuen Artikel hinzufügen</h2>
   <form hx-post="/artikel"
+        hx-include="#aktiver-filter"
         hx-target="#main-content"
         hx-swap="outerHTML">
     <div class="form-row">

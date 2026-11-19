@@ -2,6 +2,7 @@
   <div class="modal-dialog">
     <h2>Artikel bearbeiten</h2>
     <form hx-put="/artikel/{{ id }}"
+          hx-include="#aktiver-filter"
           hx-target="#main-content"
           hx-swap="outerHTML">
       <div class="form-grid">
@@ -27,6 +28,7 @@
         <button type="submit" class="btn-save">Speichern</button>
         <button type="button" class="btn-delete"
                 hx-delete="/artikel/{{ id }}"
+                hx-include="#aktiver-filter"
                 hx-confirm="Artikel &#39;{{ name }}&#39; wirklich löschen?"
                 hx-target="#main-content"
                 hx-swap="outerHTML">Löschen</button>
