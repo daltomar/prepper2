@@ -22,6 +22,8 @@ pub struct ArtikelZeile {
     pub ablaufdatum: String,
     pub bemerkung: String,
     pub status_class: String,
+    /// true, wenn sich das Ablauf-Jahr gegenüber der vorherigen sichtbaren Zeile ändert.
+    pub jahreswechsel: bool,
 }
 
 #[derive(Default)]
@@ -96,11 +98,24 @@ fn build_zeilen(artikel: &[Artikel], heute: chrono::NaiveDate, filter: &str) -> 
         "ok"         => Some(AblaufStatus::Ok),
         _            => None,
     };
-    artikel
+    // Sichtbare Zeilen (nach Filter) stabil nach Ablaufdatum sortieren. Die Sortierung
+    // passiert hier und nicht nur beim Speichern, weil die Jahres-Trennlinie davon abhängt
+    // und `laden()` die CSV-Reihenfolge unverändert übernimmt.
+    let mut sichtbar: Vec<&Artikel> = artikel
         .iter()
         .filter(|a| filter_status.as_ref().is_none_or(|fs| &a.status(heute) == fs))
+        .collect();
+    sichtbar.sort_by_key(|a| a.ablaufdatum);
+
+    let mut vorheriges_jahr: Option<i32> = None;
+    sichtbar
+        .into_iter()
         .map(|a| {
             let status = a.status(heute);
+            let jahr = a.ablaufdatum.year();
+            // Erste sichtbare Zeile: nie eine Linie (vorheriges_jahr ist None).
+            let jahreswechsel = vorheriges_jahr.is_some_and(|j| j != jahr);
+            vorheriges_jahr = Some(jahr);
             ArtikelZeile {
                 id: a.id,
                 name: a.name.clone(),
@@ -109,6 +124,7 @@ fn build_zeilen(artikel: &[Artikel], heute: chrono::NaiveDate, filter: &str) -> 
                 ablaufdatum: format_date(a.ablaufdatum),
                 bemerkung: a.bemerkung.clone().unwrap_or_default(),
                 status_class: status_class(&status).to_string(),
+                jahreswechsel,
             }
         })
         .collect()
