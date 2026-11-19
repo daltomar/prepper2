@@ -1,9 +1,13 @@
 <div id="main-content">
 {% if !fehler.is_empty() %}<div class="error-banner">{{ fehler }}</div>{% endif %}
 {% if !hinweis.is_empty() %}<div class="info-banner">{{ hinweis }}</div>{% endif %}
-<!-- Aktiver Filter: wird vom Hinzufügen-Formular mitgeschickt und per hx-include vom
-     Bearbeiten-Modal (Speichern/Löschen), damit die Antwort gefiltert bleibt. -->
-<input type="hidden" id="aktiver-filter" name="filter" value="{{ filter }}">
+<!-- Seitenkontext: wird per hx-include="#seiten-kontext" von Hinzufügen, Zeilen-Klick (Modal),
+     Speichern und Löschen mitgeschickt. filter: Antwort bleibt gefiltert. gen: Generation der
+     Artikel-IDs dieser Seite (nach einem Serverneustart veraltet → Server lädt die Seite neu). -->
+<div id="seiten-kontext" hidden>
+  <input type="hidden" id="aktiver-filter" name="filter" value="{{ filter }}">
+  <input type="hidden" id="seiten-generation" name="gen" value="{{ generation }}">
+</div>
 
 <div class="filter-bar">
   <span>Filter:</span>
@@ -44,6 +48,7 @@
     {% for zeile in zeilen %}
     <tr class="{{ zeile.status_class }}{% if zeile.jahreswechsel %} jahreswechsel{% endif %}"
         hx-get="/artikel/{{ zeile.id }}/modal"
+        hx-include="#seiten-kontext"
         hx-trigger="dblclick, click[window.matchMedia('(hover: none)').matches]"
         hx-target="#modal-container"
         hx-swap="innerHTML">
@@ -63,8 +68,12 @@
 
 <section class="formular">
   <h2>Neuen Artikel hinzufügen</h2>
+  <!-- hx-sync drop: ein zweites Absenden (Doppelklick, Enter) während die erste Anfrage läuft,
+       wird verworfen statt eingereiht (sonst entstehen doppelte Artikel). -->
   <form hx-post="/artikel"
-        hx-include="#aktiver-filter"
+        hx-include="#seiten-kontext"
+        hx-sync="this:drop"
+        hx-disabled-elt="find button[type=submit]"
         hx-target="#main-content"
         hx-swap="outerHTML">
     <div class="form-row">

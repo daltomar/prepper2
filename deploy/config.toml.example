@@ -1,0 +1,18 @@
+# Ablaufdatum-Tracker – E-Mail-Konfiguration für den Checker
+# Installieren als: /etc/ablaufdatum/config.toml
+# Berechtigungen:   chown root:ablaufdatum /etc/ablaufdatum/config.toml
+#                   chmod 640 /etc/ablaufdatum/config.toml
+#
+# Ohne diese Datei (oder ohne [email]-Abschnitt) sendet der Checker keine E-Mail.
+# Ist die Datei vorhanden, aber fehlerhaft (Tippfehler, fehlendes Feld), steht
+# "FEHLER Konfiguration: … Zeile N: …" in /var/lib/ablaufdatum/checker.log.
+#
+# Alle sechs Felder sind Pflicht. Die Werte unten sind Platzhalter.
+
+[email]
+smtp_server = "smtp.example.com"
+smtp_port   = 587                      # 587 = STARTTLS, 465 = TLS
+username    = "absender@example.com"
+password    = "app-passwort"           # bei Gmail: App-Passwort, nicht das Kontopasswort
+from        = "absender@example.com"
+to          = "empfaenger@example.com, zweiter@example.com"   # mehrere mit Komma

@@ -59,25 +59,18 @@ sudo nano /etc/ablaufdatum/env          # set ABLAUFDATUM_PASSWORD
 sudo chown root:ablaufdatum /etc/ablaufdatum/env
 sudo chmod 640 /etc/ablaufdatum/env
 
-# Email config (optional – required for checker notifications)
-# Copy and edit the template, then lock it down:
-sudo cp deploy/env.example /etc/ablaufdatum/config.toml   # replace with real config
+# Email config (optional – required for checker e-mail notifications)
+# Copy the template, fill in your SMTP data, then lock it down:
+sudo cp deploy/config.toml.example /etc/ablaufdatum/config.toml
 sudo nano /etc/ablaufdatum/config.toml
 sudo chown root:ablaufdatum /etc/ablaufdatum/config.toml
 sudo chmod 640 /etc/ablaufdatum/config.toml
 ```
 
-The config.toml format:
-
-```toml
-[email]
-smtp_server = "smtp.gmail.com"
-smtp_port   = 587
-username    = "dein@gmail.com"
-password    = "app-passwort"
-from        = "dein@gmail.com"
-to          = "empfaenger@email.de"
-```
+`deploy/config.toml.example` contains only placeholders. All six fields in `[email]` are
+required; `to` accepts several addresses separated by commas. Without the file the checker
+sends no e-mail; a broken file is reported in `/var/lib/ablaufdatum/checker.log`
+(`FEHLER Konfiguration: … Zeile N: …`).
 
 ---
 
@@ -170,16 +163,48 @@ curl -u user:yourpassword http://ablaufdatum.internal/
 
 ## Updating
 
-```bash
-cd ablaufdatum-tracker
-git pull
-cargo build --release
-sudo cp target/release/ablaufdatum-tracker /usr/local/bin/
-sudo cp target/release/ablaufdatum-checker /usr/local/bin/
-sudo systemctl restart ablaufdatum-web.service
-```
+1. **Back up the data first** (the new version may read the CSV more strictly, see
+   "Web service stays failed" below):
 
-Or: `make install-pi` (builds + copies + restarts in one step).
+   ```bash
+   sudo cp -p /var/lib/ablaufdatum/artikel.csv \
+              /var/lib/ablaufdatum/artikel.csv.bak-$(date +%F)
+   ```
+
+2. Build and install the binaries:
+
+   ```bash
+   cd ablaufdatum-tracker
+   git pull
+   cargo build --release
+   sudo cp target/release/ablaufdatum-tracker /usr/local/bin/
+   sudo cp target/release/ablaufdatum-checker /usr/local/bin/
+   ```
+
+3. If unit files in `deploy/` changed (`git diff --stat HEAD@{1} -- deploy/` after the pull
+   shows it), copy them again and reload systemd. Copying unchanged files does no harm:
+
+   ```bash
+   sudo cp deploy/ablaufdatum-web.service     /etc/systemd/system/
+   sudo cp deploy/ablaufdatum-checker.service /etc/systemd/system/
+   sudo cp deploy/ablaufdatum-checker.timer   /etc/systemd/system/
+   sudo systemctl daemon-reload
+   ```
+
+4. Restart and check:
+
+   ```bash
+   sudo systemctl restart ablaufdatum-web.service
+   sudo systemctl status ablaufdatum-web.service
+   systemctl list-timers ablaufdatum-checker.timer
+   ```
+
+`make install-pi` covers step 2 plus the restart. It does **not** back up the CSV or copy
+the unit files.
+
+Browser tabs that were open before the restart are outdated (item IDs are reassigned on
+start). Their next save/delete is refused, and the page reloads with the notice "Die Seite war
+veraltet und wurde neu geladen. Bitte erneut versuchen." Nothing is changed in that case.
 
 ---
 

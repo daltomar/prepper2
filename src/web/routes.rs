@@ -44,6 +44,7 @@ pub struct FormularState {
 struct IndexTemplate {
     zeilen: Vec<ArtikelZeile>,
     filter: String,
+    generation: String,
     form: FormularState,
     fehler: String,
     hinweis: String,
@@ -54,6 +55,8 @@ struct IndexTemplate {
 struct MainContentTemplate {
     zeilen: Vec<ArtikelZeile>,
     filter: String,
+    /// `AppState::generation`, als verstecktes Feld `#seiten-generation` in der Seite.
+    generation: String,
     form: FormularState,
     fehler: String,
     /// Info-Meldung, z. B. wenn ein gespeicherter Artikel im aktiven Filter nicht sichtbar ist.
@@ -195,12 +198,19 @@ fn main_with_oob_modal_clear(
     artikel: &[Artikel],
     heute: chrono::NaiveDate,
     filter: &str,
-    form: FormularState,
+    generation: &str,
     fehler: String,
     hinweis: String,
 ) -> Response {
     let zeilen = build_zeilen(artikel, heute, filter);
-    let t = MainContentTemplate { zeilen, filter: filter.to_string(), form, fehler, hinweis };
+    let t = MainContentTemplate {
+        zeilen,
+        filter: filter.to_string(),
+        generation: generation.to_string(),
+        form: FormularState::default(),
+        fehler,
+        hinweis,
+    };
     match t.render() {
         Ok(mut html) => {
             html.push_str(r#"<div id="modal-container" hx-swap-oob="true"></div>"#);
@@ -253,9 +263,39 @@ fn validate_form(form: &ArtikelFormData) -> Validierung {
 
 // ── Query/Form types ───────────────────────────────────────────────────────────
 
+/// Query-Parameter für `GET /`, `GET /artikel/:id/modal` und `DELETE /artikel/:id`
+/// (HTMX 2 schickt bei GET und DELETE die Werte aus `hx-include` in der URL).
 #[derive(Deserialize, Default)]
 pub struct FilterParams {
     pub filter: Option<String>,
+    /// Generation der Seite, von der die Anfrage kommt (`#seiten-generation`).
+    pub gen: Option<String>,
+    /// Gesetzt nach einer abgelehnten Anfrage von einer veralteten Seite → Fehlerbanner.
+    pub veraltet: Option<String>,
+}
+
+pub const FEHLER_VERALTET: &str =
+    "Die Seite war veraltet und wurde neu geladen. Bitte erneut versuchen.";
+pub const FEHLER_NICHT_GEFUNDEN: &str =
+    "Artikel nicht gefunden – wurde er inzwischen gelöscht?";
+
+/// Gehört die Anfrage zur aktuellen Generation? Fehlt `gen` (Seite von vor diesem Update,
+/// curl), gilt sie als veraltet: lieber einmal neu laden als den falschen Artikel ändern.
+fn generation_passt(state: &AppState, gen: Option<&str>) -> bool {
+    gen == Some(state.generation.as_str())
+}
+
+/// Antwort auf eine Anfrage von einer veralteten Seite: nichts ändern, Seite komplett neu
+/// laden (neue IDs, neue Generation, ggf. neues CSS/JS nach einem Update) und dort das
+/// Fehlerbanner zeigen. `HX-Redirect` wertet HTMX vor dem Statuscode aus; der Status 409
+/// ist für Nicht-HTMX-Clients (curl) gedacht.
+fn veraltet_antwort(filter: &str) -> Response {
+    (
+        StatusCode::CONFLICT,
+        [("HX-Redirect", format!("/?filter={filter}&veraltet=1"))],
+        FEHLER_VERALTET,
+    )
+        .into_response()
 }
 
 /// Formulardaten für Hinzufügen/Bearbeiten. Alle Felder sind `#[serde(default)]`: Fehlt ein
@@ -271,6 +311,8 @@ pub struct ArtikelFormData {
     /// Aktiver Filter der Seite (verstecktes Feld `#aktiver-filter`), damit die Antwort
     /// gefiltert bleibt. Fehlt er (alte Seite im Browser, curl), gilt `"alle"`.
     pub filter: String,
+    /// Generation der Seite (`#seiten-generation`), siehe `AppState::generation`.
+    pub gen: String,
 }
 
 // ── Statische Dateien ──────────────────────────────────────────────────────────
@@ -303,21 +345,25 @@ pub async fn index(
     let heute = chrono::Local::now().date_naive();
     let filter = normalisiere_filter(params.filter.as_deref()).to_string();
     let zeilen = build_zeilen(&artikel, heute, &filter);
+    let generation = state.generation.clone();
+    let fehler = if params.veraltet.is_some() { FEHLER_VERALTET.to_string() } else { String::new() };
 
     if is_htmx(&headers) {
         render(MainContentTemplate {
             zeilen,
             filter,
+            generation,
             form: FormularState::default(),
-            fehler: String::new(),
+            fehler,
             hinweis: String::new(),
         })
     } else {
         render(IndexTemplate {
             zeilen,
             filter,
+            generation,
             form: FormularState::default(),
-            fehler: String::new(),
+            fehler,
             hinweis: String::new(),
         })
     }
@@ -327,8 +373,11 @@ pub async fn hinzufuegen(
     State(state): State<AppState>,
     Form(form): Form<ArtikelFormData>,
 ) -> Response {
-    let v = validate_form(&form);
     let filter = normalisiere_filter(Some(&form.filter));
+    if !generation_passt(&state, Some(&form.gen)) {
+        return veraltet_antwort(filter);
+    }
+    let v = validate_form(&form);
 
     if v.hat_fehler() {
         let artikel = state.artikel.read().await;
@@ -337,6 +386,7 @@ pub async fn hinzufuegen(
         return render(MainContentTemplate {
             zeilen,
             filter: filter.to_string(),
+            generation: state.generation.clone(),
             form: FormularState {
                 name: form.name,
                 ablaufdatum: datum_fuer_input(&form.ablaufdatum),
@@ -377,6 +427,7 @@ pub async fn hinzufuegen(
     render(MainContentTemplate {
         zeilen,
         filter: filter.to_string(),
+        generation: state.generation.clone(),
         form: FormularState::default(),
         fehler,
         hinweis,
@@ -386,10 +437,22 @@ pub async fn hinzufuegen(
 pub async fn zeige_modal(
     State(state): State<AppState>,
     Path(id): Path<u64>,
+    Query(params): Query<FilterParams>,
 ) -> Response {
+    let filter = normalisiere_filter(params.filter.as_deref());
+    if !generation_passt(&state, params.gen.as_deref()) {
+        return veraltet_antwort(filter);
+    }
     let artikel = state.artikel.read().await;
     let Some(a) = artikel.iter().find(|a| a.id == id) else {
-        return StatusCode::NOT_FOUND.into_response();
+        // Ziel ist eigentlich #modal-container; stattdessen Tabelle + Fehlerbanner zeigen.
+        let heute = chrono::Local::now().date_naive();
+        let mut response = main_with_oob_modal_clear(
+            &artikel, heute, filter, &state.generation, FEHLER_NICHT_GEFUNDEN.to_string(), String::new(),
+        );
+        response.headers_mut().insert("HX-Retarget", "#main-content".parse().unwrap());
+        response.headers_mut().insert("HX-Reswap", "outerHTML".parse().unwrap());
+        return response;
     };
     render(ModalTemplate {
         id: a.id,
@@ -408,8 +471,19 @@ pub async fn bearbeiten(
     Path(id): Path<u64>,
     Form(form): Form<ArtikelFormData>,
 ) -> Response {
-    let v = validate_form(&form);
     let filter = normalisiere_filter(Some(&form.filter));
+    if !generation_passt(&state, Some(&form.gen)) {
+        return veraltet_antwort(filter);
+    }
+    let mut artikel = state.artikel.write().await;
+    let heute = chrono::Local::now().date_naive();
+    if !artikel.iter().any(|a| a.id == id) {
+        // Inzwischen gelöscht (z. B. auf einem anderen Gerät): nicht still schließen.
+        return main_with_oob_modal_clear(
+            &artikel, heute, filter, &state.generation, FEHLER_NICHT_GEFUNDEN.to_string(), String::new(),
+        );
+    }
+    let v = validate_form(&form);
 
     if v.hat_fehler() {
         let mut response = render(ModalTemplate {
@@ -427,7 +501,6 @@ pub async fn bearbeiten(
         return response;
     }
 
-    let mut artikel = state.artikel.write().await;
     if let Some(a) = artikel.iter_mut().find(|a| a.id == id) {
         a.name = form.name.trim().to_string();
         // a.kaufdatum bleibt bewusst unverändert (nicht im Formular editierbar).
@@ -438,14 +511,13 @@ pub async fn bearbeiten(
     artikel.sort_by_key(|a| a.ablaufdatum);
 
     let fehler = speichern(&state.csv_pfad, &artikel).err().unwrap_or_default();
-    let heute = chrono::Local::now().date_naive();
     // Fällt der Artikel durch die Änderung aus dem Filter, verschwindet die Zeile: Hinweis zeigen.
     let hinweis = artikel
         .iter()
         .find(|a| a.id == id)
         .map(|a| hinweis_falls_ausgeblendet(a, heute, filter))
         .unwrap_or_default();
-    main_with_oob_modal_clear(&artikel, heute, filter, FormularState::default(), fehler, hinweis)
+    main_with_oob_modal_clear(&artikel, heute, filter, &state.generation, fehler, hinweis)
 }
 
 pub async fn loeschen(
@@ -455,12 +527,22 @@ pub async fn loeschen(
     Query(params): Query<FilterParams>,
 ) -> Response {
     let filter = normalisiere_filter(params.filter.as_deref());
+    if !generation_passt(&state, params.gen.as_deref()) {
+        return veraltet_antwort(filter);
+    }
     let mut artikel = state.artikel.write().await;
+    let heute = chrono::Local::now().date_naive();
+    let vorher = artikel.len();
     artikel.retain(|a| a.id != id);
+    if artikel.len() == vorher {
+        // Nichts gelöscht → auch nichts speichern, aber Bescheid geben.
+        return main_with_oob_modal_clear(
+            &artikel, heute, filter, &state.generation, FEHLER_NICHT_GEFUNDEN.to_string(), String::new(),
+        );
+    }
 
     let fehler = speichern(&state.csv_pfad, &artikel).err().unwrap_or_default();
-    let heute = chrono::Local::now().date_naive();
-    main_with_oob_modal_clear(&artikel, heute, filter, FormularState::default(), fehler, String::new())
+    main_with_oob_modal_clear(&artikel, heute, filter, &state.generation, fehler, String::new())
 }
 
 #[cfg(test)]

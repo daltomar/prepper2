@@ -19,6 +19,39 @@ pub struct AppState {
     pub password: String,
     /// Ziel von `speichern()`. Im State statt global, damit Tests eigene Dateien nutzen.
     pub csv_pfad: PathBuf,
+    /// Zufälliges Token pro Serverstart („Generation“ der Artikel-IDs).
+    ///
+    /// Die IDs sind Zeilenindizes, die beim Laden vergeben und nicht gespeichert werden; nach
+    /// einem Neustart zeigt dieselbe ID evtl. auf einen anderen Artikel. Jede Seite schickt
+    /// ihre Generation mit (`gen`); passt sie nicht, wird nichts geändert und die Seite neu
+    /// geladen (siehe `routes::veraltet_antwort`).
+    pub generation: String,
+}
+
+impl AppState {
+    pub fn neu(artikel: Vec<Artikel>, password: String, csv_pfad: PathBuf) -> Self {
+        AppState {
+            artikel: Arc::new(RwLock::new(artikel)),
+            password,
+            csv_pfad,
+            generation: neue_generation(),
+        }
+    }
+}
+
+/// 64 Bit Zufall ohne zusätzliche Abhängigkeit: `RandomState` wird vom Betriebssystem
+/// zufällig geseedet; Zeit und PID kommen dazu. Kein Sicherheitsmerkmal, nur Unterscheidung
+/// von Serverstarts.
+fn neue_generation() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    h.write_u128(nanos);
+    h.write_u32(std::process::id());
+    format!("{:016x}", h.finish())
 }
 
 /// Alle Routen inkl. Basic-Auth-Middleware. In `main.rs` und in den Tests (`tests/web.rs`)

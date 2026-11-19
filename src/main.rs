@@ -1,5 +1,3 @@
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use ablaufdatum_tracker::{
     csv_io::{csv_pfad, laden_aus},
     web::{router, AppState},
@@ -30,11 +28,7 @@ async fn main() {
         std::process::exit(2);
     });
 
-    let state = AppState {
-        artikel: Arc::new(RwLock::new(artikel)),
-        password,
-        csv_pfad,
-    };
+    let state = AppState::neu(artikel, password, csv_pfad);
     let app = router(state);
 
     let addr = std::env::var("ABLAUFDATUM_ADDR")

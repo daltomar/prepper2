@@ -117,13 +117,16 @@ pub fn lesen<R: std::io::Read>(quelle: R) -> Result<Vec<Artikel>, String> {
     Ok(artikel)
 }
 
-/// Schreibt atomar: erst `<name>.csv.tmp`, dann Umbenennen auf `pfad`. Bricht das Schreiben
-/// ab, bleibt die alte Datei unverändert.
+/// Schreibt atomar und dauerhaft: erst `<name>.csv.tmp` schreiben und mit `sync_all()` auf
+/// den Datenträger bringen, dann auf `pfad` umbenennen und das Verzeichnis synchronisieren
+/// (damit auch die Umbenennung einen Stromausfall übersteht, z. B. SD-Karte am Pi). Bricht
+/// das Schreiben ab, bleibt die alte Datei unverändert.
 pub fn speichern(pfad: &Path, artikel: &[Artikel]) -> Result<(), String> {
     let tmp_pfad = pfad.with_extension("csv.tmp");
 
+    let datei = std::fs::File::create(&tmp_pfad).map_err(|e| e.to_string())?;
     {
-        let mut writer = csv::Writer::from_path(&tmp_pfad).map_err(|e| e.to_string())?;
+        let mut writer = csv::Writer::from_writer(&datei);
         writer
             .write_record(KOPFZEILE)
             .map_err(|e| e.to_string())?;
@@ -143,9 +146,25 @@ pub fn speichern(pfad: &Path, artikel: &[Artikel]) -> Result<(), String> {
         }
         writer.flush().map_err(|e| e.to_string())?;
     }
+    datei.sync_all().map_err(|e| e.to_string())?;
+    drop(datei);
 
     std::fs::rename(&tmp_pfad, pfad).map_err(|e| e.to_string())?;
+    verzeichnis_synchronisieren(pfad);
     Ok(())
+}
+
+/// fsync auf das Verzeichnis, das `pfad` enthält. Fehler werden ignoriert: Auf manchen
+/// Plattformen/Dateisystemen (z. B. Windows) lassen sich Verzeichnisse so nicht öffnen bzw.
+/// synchronisieren; die Datei selbst ist zu diesem Zeitpunkt bereits gesichert.
+fn verzeichnis_synchronisieren(pfad: &Path) {
+    let verzeichnis = match pfad.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
+    };
+    if let Ok(v) = std::fs::File::open(verzeichnis) {
+        let _ = v.sync_all();
+    }
 }
 
 #[cfg(test)]

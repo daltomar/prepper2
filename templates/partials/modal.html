@@ -1,8 +1,12 @@
 <div class="modal-overlay" onclick="if(event.target===this && Date.now()-(window.modalGeoeffnetUm||0)>400)document.getElementById('modal-container').innerHTML=''">
   <div class="modal-dialog">
     <h2>Artikel bearbeiten</h2>
+    <!-- Speichern und Löschen teilen sich die Sync-Warteschlange des Formulars (drop) und
+         sperren beide Buttons, solange eine Anfrage läuft. -->
     <form hx-put="/artikel/{{ id }}"
-          hx-include="#aktiver-filter"
+          hx-include="#seiten-kontext"
+          hx-sync="this:drop"
+          hx-disabled-elt="#modal-speichern, #modal-loeschen"
           hx-target="#main-content"
           hx-swap="outerHTML">
       <div class="form-grid">
@@ -25,10 +29,12 @@
         <div><input type="text" name="bemerkung" value="{{ bemerkung }}" class="input-bemerkung"></div>
       </div>
       <div class="modal-actions">
-        <button type="submit" class="btn-save">Speichern</button>
-        <button type="button" class="btn-delete"
+        <button type="submit" class="btn-save" id="modal-speichern">Speichern</button>
+        <button type="button" class="btn-delete" id="modal-loeschen"
                 hx-delete="/artikel/{{ id }}"
-                hx-include="#aktiver-filter"
+                hx-include="#seiten-kontext"
+                hx-sync="closest form:drop"
+                hx-disabled-elt="#modal-speichern, #modal-loeschen"
                 hx-confirm="Artikel &#39;{{ name }}&#39; wirklich löschen?"
                 hx-target="#main-content"
                 hx-swap="outerHTML">Löschen</button>
