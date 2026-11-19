@@ -46,6 +46,7 @@ struct IndexTemplate {
     filter: String,
     form: FormularState,
     fehler: String,
+    hinweis: String,
 }
 
 #[derive(Template)]
@@ -55,6 +56,8 @@ struct MainContentTemplate {
     filter: String,
     form: FormularState,
     fehler: String,
+    /// Info-Meldung, z. B. wenn ein gespeicherter Artikel im aktiven Filter nicht sichtbar ist.
+    hinweis: String,
 }
 
 #[derive(Template)]
@@ -92,14 +95,55 @@ fn status_class(s: &AblaufStatus) -> &'static str {
     }
 }
 
-fn build_zeilen(artikel: &[Artikel], heute: chrono::NaiveDate, filter: &str) -> Vec<ArtikelZeile> {
-    let filter_status: Option<AblaufStatus> = match filter {
+/// Erlaubte Filterwerte. Alles andere (fehlend, leer, unbekannt) wird zu `"alle"`, damit
+/// nur bekannte Werte im Template (`value="{{ filter }}"`) und in den Requests landen.
+fn normalisiere_filter(filter: Option<&str>) -> &'static str {
+    match filter.map(str::trim) {
+        Some("abgelaufen") => "abgelaufen",
+        Some("kritisch") => "kritisch",
+        Some("warnung") => "warnung",
+        Some("ok") => "ok",
+        _ => "alle",
+    }
+}
+
+/// Status zu einem (normalisierten) Filter; `None` = alle anzeigen.
+fn filter_status(filter: &str) -> Option<AblaufStatus> {
+    match filter {
         "abgelaufen" => Some(AblaufStatus::Abgelaufen),
         "kritisch"   => Some(AblaufStatus::KritischBald),
         "warnung"    => Some(AblaufStatus::WarnungBald),
         "ok"         => Some(AblaufStatus::Ok),
         _            => None,
-    };
+    }
+}
+
+/// Beschriftung wie auf dem Filter-Button.
+fn filter_label(filter: &str) -> &'static str {
+    match filter {
+        "abgelaufen" => "Abgelaufen",
+        "kritisch"   => "Bald kritisch",
+        "warnung"    => "Warnung",
+        "ok"         => "OK",
+        _            => "Alle",
+    }
+}
+
+/// Hinweis, falls der gerade gespeicherte Artikel wegen des aktiven Filters nicht in der
+/// Tabelle erscheint (sonst sähe es so aus, als wäre nichts gespeichert worden).
+fn hinweis_falls_ausgeblendet(a: &Artikel, heute: chrono::NaiveDate, filter: &str) -> String {
+    match filter_status(filter) {
+        Some(fs) if a.status(heute) != fs => format!(
+            "„{}“ wurde gespeichert, ist im Filter „{}“ aber nicht sichtbar.",
+            a.name,
+            filter_label(filter)
+        ),
+        _ => String::new(),
+    }
+}
+
+fn build_zeilen(artikel: &[Artikel], heute: chrono::NaiveDate, filter: &str) -> Vec<ArtikelZeile> {
+    let filter_status = filter_status(filter);
     // Sichtbare Zeilen (nach Filter) stabil nach Ablaufdatum sortieren. Die Sortierung
     // passiert hier und nicht nur beim Speichern, weil die Jahres-Trennlinie davon abhängt
     // und `laden()` die CSV-Reihenfolge unverändert übernimmt.
@@ -142,9 +186,10 @@ fn main_with_oob_modal_clear(
     filter: &str,
     form: FormularState,
     fehler: String,
+    hinweis: String,
 ) -> Response {
     let zeilen = build_zeilen(artikel, heute, filter);
-    let t = MainContentTemplate { zeilen, filter: filter.to_string(), form, fehler };
+    let t = MainContentTemplate { zeilen, filter: filter.to_string(), form, fehler, hinweis };
     match t.render() {
         Ok(mut html) => {
             html.push_str(r#"<div id="modal-container" hx-swap-oob="true"></div>"#);
@@ -208,6 +253,10 @@ pub struct ArtikelFormData {
     pub ablaufdatum: String,
     pub menge: String,
     pub bemerkung: String,
+    /// Aktiver Filter der Seite (verstecktes Feld `#aktiver-filter`), damit die Antwort
+    /// gefiltert bleibt. Fehlt er (alte Seite im Browser, curl), gilt `"alle"`.
+    #[serde(default)]
+    pub filter: String,
 }
 
 // ── Statische Dateien ──────────────────────────────────────────────────────────
@@ -238,7 +287,7 @@ pub async fn index(
 ) -> Response {
     let artikel = state.artikel.read().await;
     let heute = chrono::Local::now().date_naive();
-    let filter = params.filter.as_deref().unwrap_or("alle").to_string();
+    let filter = normalisiere_filter(params.filter.as_deref()).to_string();
     let zeilen = build_zeilen(&artikel, heute, &filter);
 
     if is_htmx(&headers) {
@@ -247,6 +296,7 @@ pub async fn index(
             filter,
             form: FormularState::default(),
             fehler: String::new(),
+            hinweis: String::new(),
         })
     } else {
         render(IndexTemplate {
@@ -254,6 +304,7 @@ pub async fn index(
             filter,
             form: FormularState::default(),
             fehler: String::new(),
+            hinweis: String::new(),
         })
     }
 }
@@ -263,14 +314,15 @@ pub async fn hinzufuegen(
     Form(form): Form<ArtikelFormData>,
 ) -> Response {
     let v = validate_form(&form);
+    let filter = normalisiere_filter(Some(&form.filter));
 
     if v.hat_fehler() {
         let artikel = state.artikel.read().await;
         let heute = chrono::Local::now().date_naive();
-        let zeilen = build_zeilen(&artikel, heute, "alle");
+        let zeilen = build_zeilen(&artikel, heute, filter);
         return render(MainContentTemplate {
             zeilen,
-            filter: "alle".to_string(),
+            filter: filter.to_string(),
             form: FormularState {
                 name: form.name,
                 ablaufdatum: form.ablaufdatum,
@@ -281,6 +333,7 @@ pub async fn hinzufuegen(
                 fehler_menge: v.fehler_menge,
             },
             fehler: String::new(),
+            hinweis: String::new(),
         });
     }
 
@@ -299,14 +352,20 @@ pub async fn hinzufuegen(
 
     let fehler = speichern(&artikel).err().unwrap_or_default();
     let heute = chrono::Local::now().date_naive();
-    let zeilen = build_zeilen(&artikel, heute, "alle");
+    let zeilen = build_zeilen(&artikel, heute, filter);
+    let hinweis = artikel
+        .iter()
+        .find(|a| a.id == new_id)
+        .map(|a| hinweis_falls_ausgeblendet(a, heute, filter))
+        .unwrap_or_default();
     drop(artikel);
 
     render(MainContentTemplate {
         zeilen,
-        filter: "alle".to_string(),
+        filter: filter.to_string(),
         form: FormularState::default(),
         fehler,
+        hinweis,
     })
 }
 
@@ -336,6 +395,7 @@ pub async fn bearbeiten(
     Form(form): Form<ArtikelFormData>,
 ) -> Response {
     let v = validate_form(&form);
+    let filter = normalisiere_filter(Some(&form.filter));
 
     if v.hat_fehler() {
         let mut response = render(ModalTemplate {
@@ -365,17 +425,68 @@ pub async fn bearbeiten(
 
     let fehler = speichern(&artikel).err().unwrap_or_default();
     let heute = chrono::Local::now().date_naive();
-    main_with_oob_modal_clear(&artikel, heute, "alle", FormularState::default(), fehler)
+    // Fällt der Artikel durch die Änderung aus dem Filter, verschwindet die Zeile: Hinweis zeigen.
+    let hinweis = artikel
+        .iter()
+        .find(|a| a.id == id)
+        .map(|a| hinweis_falls_ausgeblendet(a, heute, filter))
+        .unwrap_or_default();
+    main_with_oob_modal_clear(&artikel, heute, filter, FormularState::default(), fehler, hinweis)
 }
 
 pub async fn loeschen(
     State(state): State<AppState>,
     Path(id): Path<u64>,
+    // HTMX 2 schickt bei DELETE die Parameter (inkl. `filter` via hx-include) in der URL.
+    Query(params): Query<FilterParams>,
 ) -> Response {
+    let filter = normalisiere_filter(params.filter.as_deref());
     let mut artikel = state.artikel.write().await;
     artikel.retain(|a| a.id != id);
 
     let fehler = speichern(&artikel).err().unwrap_or_default();
     let heute = chrono::Local::now().date_naive();
-    main_with_oob_modal_clear(&artikel, heute, "alle", FormularState::default(), fehler)
+    main_with_oob_modal_clear(&artikel, heute, filter, FormularState::default(), fehler, String::new())
+}
+
+#[cfg(test)]
+mod tests_filter {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn artikel(name: &str, ablauf: NaiveDate) -> Artikel {
+        Artikel { id: 1, name: name.into(), kaufdatum: None, menge: None, ablaufdatum: ablauf, bemerkung: None }
+    }
+
+    #[test]
+    fn filter_wird_normalisiert() {
+        assert_eq!(normalisiere_filter(Some("warnung")), "warnung");
+        assert_eq!(normalisiere_filter(Some(" ok ")), "ok");
+        assert_eq!(normalisiere_filter(Some("")), "alle");
+        assert_eq!(normalisiere_filter(Some("\"><script>")), "alle");
+        assert_eq!(normalisiere_filter(None), "alle");
+    }
+
+    #[test]
+    fn hinweis_nur_wenn_ausgeblendet() {
+        let heute = NaiveDate::from_ymd_opt(2026, 11, 19).unwrap();
+        let abgelaufen = artikel("Milch", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+        assert!(hinweis_falls_ausgeblendet(&abgelaufen, heute, "alle").is_empty());
+        assert!(hinweis_falls_ausgeblendet(&abgelaufen, heute, "abgelaufen").is_empty());
+        let h = hinweis_falls_ausgeblendet(&abgelaufen, heute, "ok");
+        assert!(h.contains("Milch") && h.contains("„OK“"), "{h}");
+    }
+
+    #[test]
+    fn build_zeilen_filtert() {
+        let heute = NaiveDate::from_ymd_opt(2026, 11, 19).unwrap();
+        let liste = vec![
+            artikel("Alt", NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+            artikel("Neu", NaiveDate::from_ymd_opt(2030, 1, 1).unwrap()),
+        ];
+        assert_eq!(build_zeilen(&liste, heute, "alle").len(), 2);
+        let ok = build_zeilen(&liste, heute, "ok");
+        assert_eq!(ok.len(), 1);
+        assert_eq!(ok[0].name, "Neu");
+    }
 }

@@ -138,8 +138,18 @@ CSS-Klassen: `status-ok`, `status-warnung`, `status-kritisch`, `status-abgelaufe
 | `POST`   | `/artikel`            | `hinzufuegen`   | Artikel hinzufügen                   |
 | `GET`    | `/artikel/:id/modal`  | `zeige_modal`   | Edit-Modal-Partial laden             |
 | `PUT`    | `/artikel/:id`        | `bearbeiten`    | Artikel speichern                    |
-| `DELETE` | `/artikel/:id`        | `loeschen`      | Artikel löschen                      |
+| `DELETE` | `/artikel/:id?filter=X` | `loeschen`    | Artikel löschen                      |
 | `GET`    | `/static/htmx-2.0.4.min.js` | `htmx_js` | HTMX (eingebettet, `immutable`)  |
+
+**Filter bleibt erhalten:** `main_content.html` enthält `<input type="hidden" id="aktiver-filter"
+name="filter" value="{{ filter }}">`. Hinzufügen-Formular, Modal-Formular (Speichern) und
+Löschen-Button schicken ihn per `hx-include="#aktiver-filter"` mit (`ArtikelFormData::filter`
+mit `#[serde(default)]`; bei `DELETE` als Query-Parameter, da HTMX 2 DELETE-Parameter in die
+URL schreibt). Die Antwort wird mit demselben Filter gerendert. `normalisiere_filter()` lässt nur
+`alle|abgelaufen|kritisch|warnung|ok` zu, alles andere (fehlend, leer, unbekannt) → `alle`.
+Ist der gerade hinzugefügte/bearbeitete Artikel im aktiven Filter nicht sichtbar, erscheint ein
+blauer Hinweis (`hinweis`, CSS `info-banner`): „„X“ wurde gespeichert, ist im Filter „Y“ aber
+nicht sichtbar.“ Die Browser-URL ändert sich beim Filtern nicht; ein Neuladen zeigt wieder „Alle“.
 
 Alle schreibenden Operationen halten den `RwLock` nur während Mutation + CSV-Speicherung.
 HTMX-Anfragen (Header `HX-Request: true`) erhalten das `main_content.html`-Partial
