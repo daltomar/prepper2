@@ -178,6 +178,13 @@ statt der vollständigen Seite.
     zusätzliche Jahres-Überschriftszeile.
   - Formularfelder: Name *, Ablaufdatum *, Menge (`type="number" min="1" step="1"`, Fehler
     `fehler_menge`), Bemerkung (kein Kaufdatum). Menge wird in der Tabelle rechtsbündig angezeigt.
+  - **Ablaufdatum-Eingabe:** `<input type="date" max="9999-12-31">` (Datumsauswahl des
+    Browsers/Systems) im Hinzufügen-Formular und im Modal. Der Browser sendet und erwartet als
+    `value` immer `JJJJ-MM-TT`, egal wie er das Datum anzeigt. Deshalb füllt `zeige_modal` das
+    Feld ISO-formatiert, und bei Validierungsfehlern wandelt `datum_fuer_input()` eine gültige
+    Eingabe nach ISO um. Der Server akzeptiert weiterhin auch `TT.MM.JJJJ` (`parse_datum`,
+    z. B. curl oder Browser ohne Datumsfeld; dafür bleibt der `placeholder`). Die Tabelle zeigt
+    unverändert `TT.MM.JJJJ`.
 - **`partials/modal.html`**: Bearbeitungs-Overlay mit denselben Feldern wie das
   Hinzufügen-Formular (kein Kaufdatum). Wird via `hx-get="/artikel/:id/modal"`
   in `#modal-container` geladen. Fehler beim Speichern werden über `HX-Retarget` /
@@ -194,8 +201,10 @@ statt der vollständigen Seite.
   bei Klicks > 400 ms danach. Sonst würde der zweite Tap eines gewohnheitsmäßigen Doppeltipps
   das gerade geöffnete Modal sofort wieder schließen.
 - `touch-action: manipulation` auf Tabellenzeilen und Buttons (kein Doppeltipp-Zoom).
-- **Kein Auto-Zoom bei Fokus:** In `@media (hover: none), (max-width: 600px)` haben Inputs,
-  Selects, Textareas und Buttons `font-size: 16px` (iOS zoomt bei < 16px). Desktop behält 0.88rem.
+- **Kein Auto-Zoom bei Fokus:** In `@media (hover: none), (max-width: 600px)` haben Inputs
+  (auch `type=date`), Selects, Textareas und Buttons `font-size: 16px` (iOS zoomt bei < 16px).
+  Desktop behält 0.88rem. Das Datumsfeld ist `11em` breit (wächst mit) und hat eine
+  `min-height`, weil iOS Safari ein leeres Datumsfeld sonst zusammenfallen lässt.
 - **Modal:** `width: min(560px, calc(100vw - 24px))`, `max-height: calc(100dvh - 24px)` mit
   `overflow-y: auto`; Inputs im Modal 100 % breit; Aktions-Buttons umbrechen (`flex-wrap`).
 - **Schmale Bildschirme (≤ 600px):** `.form-grid` im Modal einspaltig (Label über Feld),
