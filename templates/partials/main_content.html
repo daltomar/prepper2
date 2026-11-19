@@ -29,7 +29,7 @@
   <thead>
     <tr>
       <th>Name</th>
-      <th>Kaufdatum</th>
+      <th class="zahl">Tage bis Ablauf</th>
       <th>Menge</th>
       <th>Ablaufdatum</th>
       <th>Bemerkung</th>
@@ -43,7 +43,7 @@
         hx-target="#modal-container"
         hx-swap="innerHTML">
       <td>{{ zeile.name }}</td>
-      <td>{{ zeile.kaufdatum }}</td>
+      <td class="zahl">{{ zeile.tage_bis_ablauf }}</td>
       <td>{{ zeile.menge }}</td>
       <td>{{ zeile.ablaufdatum }}</td>
       <td>{{ zeile.bemerkung }}</td>
@@ -70,11 +70,6 @@
         <label>Ablaufdatum *</label>
         <input type="text" name="ablaufdatum" value="{{ form.ablaufdatum }}" placeholder="TT.MM.JJJJ" class="input-datum">
         {% if !form.fehler_ablaufdatum.is_empty() %}<span class="field-error">{{ form.fehler_ablaufdatum }}</span>{% endif %}
-      </div>
-      <div class="form-field">
-        <label>Kaufdatum</label>
-        <input type="text" name="kaufdatum" value="{{ form.kaufdatum }}" placeholder="TT.MM.JJJJ" class="input-datum">
-        {% if !form.fehler_kaufdatum.is_empty() %}<span class="field-error">{{ form.fehler_kaufdatum }}</span>{% endif %}
       </div>
       <div class="form-field">
         <label>Menge</label>

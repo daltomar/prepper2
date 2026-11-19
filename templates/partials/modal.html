@@ -15,11 +15,6 @@
           <input type="text" name="ablaufdatum" value="{{ ablaufdatum }}" placeholder="TT.MM.JJJJ" class="input-datum">
           {% if !fehler_ablaufdatum.is_empty() %}<span class="field-error">{{ fehler_ablaufdatum }}</span>{% endif %}
         </div>
-        <label>Kaufdatum</label>
-        <div>
-          <input type="text" name="kaufdatum" value="{{ kaufdatum }}" placeholder="TT.MM.JJJJ" class="input-datum">
-          {% if !fehler_kaufdatum.is_empty() %}<span class="field-error">{{ fehler_kaufdatum }}</span>{% endif %}
-        </div>
         <label>Menge</label>
         <div><input type="text" name="menge" value="{{ menge }}" class="input-menge"></div>
         <label>Bemerkung</label>

@@ -68,7 +68,7 @@ ablaufdatum-tracker/
 pub struct Artikel {
     pub id: u64,                       // intern, nicht in CSV
     pub name: String,                  // Pflichtfeld
-    pub kaufdatum: Option<NaiveDate>,  // optional
+    pub kaufdatum: Option<NaiveDate>,  // automatisch = Einfügedatum, nicht in der UI
     pub menge: Option<String>,         // optional, Freitext
     pub ablaufdatum: NaiveDate,        // Pflichtfeld
     pub bemerkung: Option<String>,     // optional
@@ -86,6 +86,11 @@ name,kaufdatum,menge,ablaufdatum,bemerkung
 ```
 - Datumsformat in CSV: `YYYY-MM-DD`
 - `id` wird nicht gespeichert (beim Laden als Zeilenindex vergeben)
+
+**Kaufdatum:** bleibt in Modell und CSV erhalten (Format unverändert, leere Werte erlaubt),
+wird aber in der UI weder angezeigt noch bearbeitet. `hinzufuegen` setzt es automatisch auf
+das Einfügedatum (`chrono::Local::now().date_naive()`); `bearbeiten` lässt den bestehenden
+Wert unverändert (auch einen leeren).
 
 ---
 
@@ -126,7 +131,13 @@ statt der vollständigen Seite.
   Inkludiert `partials/main_content.html` via `{% include %}`.
 - **`partials/main_content.html`**: `<div id="main-content">` mit Filter-Buttons, Tabelle,
   Hinzufügen-Formular. Wird bei HTMX-Swaps direkt zurückgegeben.
-- **`partials/modal.html`**: Bearbeitungs-Overlay. Wird via `hx-get="/artikel/:id/modal"`
+  - Tabellenspalten: **Name | Tage bis Ablauf | Menge | Ablaufdatum | Bemerkung**.
+    „Tage bis Ablauf“ = `(ablaufdatum - heute).num_days()` (in `build_zeilen` berechnet,
+    Feld `ArtikelZeile::tage_bis_ablauf: i64`), als Ganzzahl rechtsbündig (CSS-Klasse `zahl`):
+    positiv = Tage verbleibend, `0` = heute, negativ = abgelaufen.
+  - Formularfelder: Name *, Ablaufdatum *, Menge, Bemerkung (kein Kaufdatum).
+- **`partials/modal.html`**: Bearbeitungs-Overlay mit denselben Feldern wie das
+  Hinzufügen-Formular (kein Kaufdatum). Wird via `hx-get="/artikel/:id/modal"`
   in `#modal-container` geladen. Fehler beim Speichern werden über `HX-Retarget` /
   `HX-Reswap` Response-Header dorthin zurückgeleitet.
 
