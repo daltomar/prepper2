@@ -258,7 +258,11 @@ pub struct FilterParams {
     pub filter: Option<String>,
 }
 
-#[derive(Deserialize)]
+/// Formulardaten für Hinzufügen/Bearbeiten. Alle Felder sind `#[serde(default)]`: Fehlt ein
+/// Feld (z. B. curl ohne `bemerkung`), gibt es kein nacktes 422 von Axum, sondern die normale
+/// Validierung greift (Name/Ablaufdatum fehlen → Feldfehler im Formular, Rest optional).
+#[derive(Deserialize, Default)]
+#[serde(default)]
 pub struct ArtikelFormData {
     pub name: String,
     pub ablaufdatum: String,
@@ -266,7 +270,6 @@ pub struct ArtikelFormData {
     pub bemerkung: String,
     /// Aktiver Filter der Seite (verstecktes Feld `#aktiver-filter`), damit die Antwort
     /// gefiltert bleibt. Fehlt er (alte Seite im Browser, curl), gilt `"alle"`.
-    #[serde(default)]
     pub filter: String,
 }
 
